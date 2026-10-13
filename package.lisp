@@ -38,7 +38,7 @@
    #:atomic-add #:atomic-sub #:atomic-min #:atomic-max
    #:atomic-and #:atomic-or #:atomic-xor #:atomic-exchange
    #:atomic-cas #:atomic-load #:atomic-store
-   #:convert #:bitcast #:swizzle #:shl #:shr
+   #:convert #:bitcast #:swizzle #:shared-array #:local-array #:shl #:shr
    #:pow #:rsqrt #:fma #:clamp
    #:find-intrinsic #:intrinsic-name #:intrinsic-signature #:intrinsic-impure-p
    #:intrinsic-spelling
@@ -61,6 +61,7 @@
    #:ir-convert #:ir-convert-kind #:ir-convert-operand
    #:ir-intrinsic #:ir-intrinsic-intrinsic #:ir-intrinsic-args #:ir-intrinsic-options
    #:ir-declare #:ir-declare-variable #:ir-declare-init
+   #:ir-array #:ir-array-variable #:ir-array-size #:ir-array-zero
    #:ir-assign #:ir-assign-target #:ir-assign-value
    #:ir-if #:ir-if-test #:ir-if-then #:ir-if-else
    #:ir-for #:ir-for-variable #:ir-for-init #:ir-for-test #:ir-for-step #:ir-for-body

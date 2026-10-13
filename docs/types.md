@@ -16,7 +16,7 @@ Kernels use a closed set of types. Kernel parameters are annotated; everything e
 | Unsigned integers | `u8` `u16` `u32` `u64` | |
 | Boolean | `bool` | |
 | Vector | `(vec f32 4)` | element is a numeric scalar, length 2, 3 or 4 |
-| Pointer | `(ptr f32 :global)` | pointee is a scalar, vector or atomic |
+| Pointer | `(ptr f32 :global)` | pointee is a scalar, vector or atomic. [Arrays](arrays.md) are pointers too |
 | Atomic | `(atomic u32)` | `i32` or `u32`; only as a pointee |
 
 Type names are symbols exported from `cl-gpu`, so the kernel's package must use it.

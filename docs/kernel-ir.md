@@ -28,6 +28,7 @@ Type errors are `kernel-type-error`, with the location of the offending form.
 | Node | C |
 |---|---|
 | `ir-declare` | `T v = init;` |
+| `ir-array` | `T storage[n];` and a pointer to it. A shared array is lifted to kernel scope |
 | `ir-assign` | `target = value;` |
 | `ir-if` | `if (test) {...} else {...}` |
 | `ir-for` | `for (T i = init; test; step) {...}` |
@@ -83,5 +84,4 @@ A loop has no value. Use `block` for a value.
 ## Limitations
 
 - Swizzles are read-only ([#22](https://github.com/communal-software/cl-gpu/issues/22)).
-- There are no local arrays or static shared memory ([#11](https://github.com/communal-software/cl-gpu/issues/11)).
 - The IR allows vector arithmetic and one-argument broadcasts that CUDA needs helpers for ([#12](https://github.com/communal-software/cl-gpu/issues/12)).

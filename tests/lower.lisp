@@ -502,3 +502,33 @@
     (fails "(swizzle v x)")
     (fails "(swizzle v)")
     (fails "(setf (swizzle v :x) 1.0)")))
+
+;;; Arrays
+
+(test arrays-lower-to-pointers-in-their-space
+  (let* ((kernel (lower-text "(let ((tile (shared-array f32 64)) (acc (local-array (vec f32 4) 8 )))
+                                (setf (aref tile 0) 1.0)
+                                (setf (aref acc 1) (vec f32 1.0 2.0 3.0 4.0)))"))
+         (arrays (ir-nodes-of-type 'gpu:ir-array kernel)))
+    (is (equal '(64 8) (mapcar #'gpu:ir-array-size arrays)))
+    (is (equal (list (type-of-spec "(ptr f32 :shared)") (type-of-spec "(ptr (vec f32 4) :private)"))
+               (mapcar (lambda (array) (gpu:ir-variable-type (gpu:ir-array-variable array))) arrays)))
+    (is (notany #'gpu:ir-array-zero arrays)))
+  (is (gpu:ir-array-zero
+       (first (ir-nodes-of-type 'gpu:ir-array (lower-text "(shared-array u32 4 :zero)")))))
+  (is (typep (lower-text "(let ((h (shared-array (atomic u32) 4 :zero))) (atomic-add (ptr+ h 1) 1))")
+             'gpu:ir-kernel)))
+
+(test arrays-check-their-arguments
+  (flet ((fails (text)
+           (signals gpu:kernel-type-error (lower-text text :arguments "((n u32))"))))
+    (fails "(shared-array f32 0)")
+    (fails "(shared-array f32 -1)")
+    (fails "(shared-array f32 n)")
+    (fails "(shared-array f32 2.0)")
+    (fails "(shared-array f32 4 :one)")
+    (fails "(shared-array f32 4 :zero :zero)")
+    (fails "(shared-array f32)")
+    (fails "(local-array (atomic u32) 4)")
+    (fails "(shared-array (ptr f32 :global) 4)")
+    (signals gpu:kernel-syntax-error (lower-text "(shared-array nonsense 4)"))))

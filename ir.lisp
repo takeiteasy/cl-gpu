@@ -39,6 +39,11 @@
 (defstruct (ir-stmt (:constructor nil)))
 
 (defstruct (ir-declare (:include ir-stmt)) variable init)
+
+;;; VARIABLE is a pointer to the SIZE elements of a fixed-size array, of the pointer's address
+;;; space. ZERO says to clear it before the kernel body runs.
+(defstruct (ir-array (:include ir-stmt)) variable size zero)
+
 (defstruct (ir-assign (:include ir-stmt)) target value)
 (defstruct (ir-if (:include ir-stmt)) test then else)
 
@@ -56,7 +61,7 @@
 (defun ir-children (node)
   (flet ((present (&rest nodes) (remove nil nodes)))
     (etypecase node
-      ((or ir-literal ir-var ir-break ir-return) nil)
+      ((or ir-literal ir-var ir-break ir-return ir-array) nil)
       (ir-op (ir-op-operands node))
       (ir-ternary (list (ir-ternary-test node) (ir-ternary-then node) (ir-ternary-else node)))
       (ir-index (list (ir-index-base node) (ir-index-index node)))

@@ -47,9 +47,12 @@
 (defmethod bitcast-text ((printer msl-printer) type operand)
   (format nil "as_type<~a>(~a)" (type-text printer type) operand))
 
-(defmethod parameter-text ((printer msl-printer) attribute axis)
+(defun position-name (printer attribute)
   (pushnew attribute (printer-positions printer) :test #'string=)
-  (format nil "cl_gpu_~a.~a" attribute (char "xyz" axis)))
+  (format nil "cl_gpu_~a" attribute))
+
+(defmethod parameter-text ((printer msl-printer) attribute axis)
+  (format nil "~a.~a" (position-name printer attribute) (char "xyz" axis)))
 
 ;;; Metal's compare-exchange writes the old value to its expected operand and may fail spuriously.
 (defun atomic-cas-helpers ()
@@ -125,12 +128,46 @@ inline T cl_gpu_fmod(T a, T b) {
   (setf (printer-positions printer) '()
         (printer-copies printer) (assigned-parameters kernel)))
 
+;;; Threadgroup arrays are declared at kernel scope. A cleared one is filled by the whole
+;;; group before any thread continues, ahead of any return that would skip the barrier.
+(defun shared-arrays (kernel)
+  (let ((found '()))
+    (dolist (statement (ir-kernel-body kernel))
+      (map-ir (lambda (node)
+                (when (and (ir-array-p node) (shared-array-p node))
+                  (push node found)))
+              statement))
+    (nreverse found)))
+
+(defun element-zero-statement (printer array)
+  (let* ((storage (array-storage-name printer (ir-array-variable array)))
+         (element (pointer-type-pointee (ir-variable-type (ir-array-variable array)))))
+    (if (atomic-type-p element)
+        (format nil "atomic_store_explicit(&~a[cl_gpu_i], 0, memory_order_relaxed);" storage)
+        (format nil "~a[cl_gpu_i] = ~a(0);" storage (type-text printer element)))))
+
+(defun print-shared-arrays (printer kernel)
+  (let ((arrays (shared-arrays kernel)))
+    (dolist (array arrays)
+      (emit-line printer "~a;" (array-storage-text printer array)))
+    (let ((cleared (remove-if-not #'ir-array-zero arrays)))
+      (when cleared
+        (let ((index (position-name printer "thread_index_in_threadgroup"))
+              (size (position-name printer "threads_per_threadgroup")))
+          (dolist (array cleared)
+            (emit-line printer "for (uint cl_gpu_i = ~a; cl_gpu_i < ~d; cl_gpu_i += ~a.x * ~a.y * ~a.z) {"
+                       index (ir-array-size array) size size size)
+            (emit-line printer "    ~a" (element-zero-statement printer array))
+            (emit-line printer "}")))
+        (emit-line printer "threadgroup_barrier(mem_flags::mem_threadgroup);")))))
+
 (defmethod print-prologue ((printer msl-printer) kernel)
   (dolist (parameter (ir-kernel-parameters kernel))
     (when (member parameter (printer-copies printer))
       (let ((name (variable-name printer parameter)))
         (emit-line printer "~a ~a = cl_gpu_~a;"
-                   (type-text printer (ir-variable-type parameter)) name name)))))
+                   (type-text printer (ir-variable-type parameter)) name name))))
+  (print-shared-arrays printer kernel))
 
 (defun msl-parameters (printer kernel)
   (let ((buffers -1)
@@ -160,7 +197,10 @@ inline T cl_gpu_fmod(T a, T b) {
   (let ((parameters (append (msl-parameters printer kernel)
                             (loop for attribute in (sort (copy-list (printer-positions printer))
                                                          #'string<)
-                                  collect (format nil "uint3 cl_gpu_~a [[~a]]"
+                                  collect (format nil "~a cl_gpu_~a [[~a]]"
+                                                  (if (string= attribute "thread_index_in_threadgroup")
+                                                      "uint"
+                                                      "uint3")
                                                   attribute attribute)))))
     (format stream "kernel void ~a(~{~%    ~a~^,~}) {~%"
             (sanitised-kernel-name printer kernel) parameters)))

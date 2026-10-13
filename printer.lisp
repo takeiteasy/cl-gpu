@@ -386,6 +386,31 @@
 (defmethod print-statement ((printer c-printer) (statement ir-expr-stmt))
   (emit-line printer "~a;" (expr-text printer (ir-expr-stmt-expr statement))))
 
+;;; Arrays. The storage is named from the pointer variable that the kernel sees.
+
+(defun array-storage-name (printer variable)
+  (format nil "cl_gpu_~a" (variable-name printer variable)))
+
+(defun array-storage-text (printer array)
+  "The declaration of ARRAY's storage, without the semicolon."
+  (let ((type (ir-variable-type (ir-array-variable array))))
+    (format nil "~a ~a ~a[~d]"
+            (space-text printer (pointer-type-space type))
+            (type-text printer (pointer-type-pointee type))
+            (array-storage-name printer (ir-array-variable array))
+            (ir-array-size array))))
+
+(defun shared-array-p (array)
+  (eq :shared (pointer-type-space (ir-variable-type (ir-array-variable array)))))
+
+(defmethod print-statement ((printer c-printer) (statement ir-array))
+  (let ((variable (ir-array-variable statement)))
+    (unless (shared-array-p statement)
+      (emit-line printer "~a~:[~; = {}~];" (array-storage-text printer statement)
+                 (ir-array-zero statement)))
+    (emit-line printer "~a ~a = ~a;" (type-text printer (ir-variable-type variable))
+               (variable-name printer variable) (array-storage-name printer variable))))
+
 ;;; Kernels
 
 (defun print-kernel (kernel printer &optional (stream *standard-output*))

@@ -862,6 +862,28 @@ BROADCAST, a vector among the nodes decides the type and a scalar of its element
                                  (parse-type `(vec ,(type-spec element) ,(length indices)))
                                  element)))))
 
+;;; Fixed-size arrays
+
+(defun lower-array (node args space)
+  "A new array in SPACE, as the pointer to its first element."
+  (check-arity node args 2 3)
+  (let ((element (type-argument (first args)))
+        (size (literal-argument (second args) (lambda (value) (typep value '(integer 1)))
+                                "a positive integer size"))
+        (zero (and (third args)
+                   (literal-argument (third args) (lambda (value) (eq value :zero))
+                                     ":zero"))))
+    (unless (or (numeric-scalar-p element) (bool-type-p element) (vector-type-p element)
+                (and (atomic-type-p element) (eq space :shared)))
+      (type-fail (first args) "an array element must be a scalar or vector~:[~; (atomic only in shared)~], got ~a"
+                 (eq space :shared) (type-description element)))
+    (let ((variable (new-variable 'array (parse-type `(ptr ,(type-spec element) ,space)) :temp t)))
+      (emit (make-ir-array :variable variable :size size :zero (and zero t)))
+      (var-expr variable))))
+
+(define-operator shared-array (node args hint) (lower-array node args :shared))
+(define-operator local-array (node args hint) (lower-array node args :private))
+
 ;;; Intrinsics
 
 (defun literal-argument (node predicate what)
@@ -960,7 +982,8 @@ BROADCAST, a vector among the nodes decides the type and a scalar of its element
         (map-ir (lambda (node)
                   (typecase node
                     (ir-expr (note (ir-expr-type node)))
-                    (ir-declare (note (ir-variable-type (ir-declare-variable node))))))
+                    (ir-declare (note (ir-variable-type (ir-declare-variable node))))
+                    (ir-array (note (ir-variable-type (ir-array-variable node))))))
                 statement)))
     (sort types #'string< :key (lambda (type) (symbol-name (scalar-type-name type))))))
 

@@ -67,6 +67,8 @@ Parameters are bound by position.
 
 Thread positions are extra `uint3` parameters, named `cl_gpu_` and the attribute, after the kernel's own. A kernel that never calls `global-id` has no `thread_position_in_grid`.
 
+A `shared-array` is declared at the top of the kernel as `threadgroup T cl_gpu_name[n]`, and a `local-array` in place as `thread T cl_gpu_name[n]`. See [arrays](arrays.md).
+
 A scalar or vector parameter that the kernel assigns is passed as `cl_gpu_name` and copied into a local `name`.
 
 Atomics take the pointer as written. `atomic-cas` calls the helper `cl_gpu_atomic_cas`, which the source defines when the kernel uses it.[^1]

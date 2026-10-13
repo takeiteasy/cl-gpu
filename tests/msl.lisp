@@ -171,6 +171,19 @@
         (setf (aref us 0) (vec f32 (swizzle a :r) (swizzle a :g) (swizzle a :b))))"
      "((vs (ptr (vec f32 4) :global)) (ws (ptr (vec i32 2) :global)) (o (ptr f32 :global))
        (us (ptr (vec f32 3) :global)) (x f32))")
+    ("arrays"
+     "(let ((tile (shared-array f32 64 :zero))
+            (hist (shared-array (atomic u32) 4 :zero))
+            (acc (local-array (vec f32 4) 8 :zero))
+            (scratch (local-array u8 3)))
+        (when (> (local-id 0) 100) (return))
+        (setf (aref tile (local-id 0)) 1.0)
+        (barrier)
+        (atomic-add (ptr+ hist (logand (local-id 0) 3)) 1)
+        (setf (aref acc 0) (aref v 0))
+        (setf (aref scratch 1) (convert u8 3))
+        (setf (aref out 0) (+ (aref tile 1) (aref (aref acc 0) 1))))"
+     "((out (ptr f32 :global)) (v (ptr (vec f32 4) :global)))")
     ("remainders"
      "(progn
         (setf (aref o 0) (mod (aref o 1) (aref o 2)))
@@ -218,6 +231,33 @@
                            :arguments "((vs (ptr (vec f32 4) :global)) (o (ptr f32 :global)))")))
     (is (contains-p text "v_3 * float4(2.0f)"))
     (is (contains-p text "v_3.zx.x"))))
+
+(test shared-arrays-are-declared-at-kernel-scope
+  (let ((text (kernel-text "(when (> (global-id 0) 1)
+                              (let ((tile (shared-array f32 8)))
+                                (setf (aref tile 0) 1.0)))"
+                           :arguments "()")))
+    (is (< (search "threadgroup float cl_gpu_array_" text) (search "if (" text)))
+    (is (contains-p text "threadgroup float* array_"))
+    (is (not (contains-p text "threadgroup_barrier")))
+    (is (not (contains-p text "[[thread_index_in_threadgroup]]")))))
+
+(test cleared-shared-arrays-are-filled-before-the-body
+  (let ((text (kernel-text "(let ((tile (shared-array f32 8 :zero)))
+                              (when (> (global-id 0) 1) (return))
+                              (setf (aref tile 0) 1.0))")))
+    (is (contains-p text "uint cl_gpu_thread_index_in_threadgroup [[thread_index_in_threadgroup]]"))
+    (is (contains-p text "uint3 cl_gpu_threads_per_threadgroup [[threads_per_threadgroup]]"))
+    (is (< (search "[cl_gpu_i] = float(0);" text)
+           (search "threadgroup_barrier" text)
+           (search "return;" text)))))
+
+(test local-arrays-are-declared-in-place
+  (let ((text (kernel-text "(let ((a (local-array i32 4 :zero)) (b (local-array i32 2)))
+                              (setf (aref a 0) (aref b 1)))")))
+    (is (contains-p text "thread int cl_gpu_array_1[4] = {};"))
+    (is (contains-p text "thread int cl_gpu_array_3[2];"))
+    (is (contains-p text "thread int* a_2 = array_1;"))))
 
 (test pointer-comparisons-print-as-c
   (let ((text (kernel-text "(when (and (/= p q) (< p (ptr+ q 1))) (setf (aref p 0) 1.0))"
