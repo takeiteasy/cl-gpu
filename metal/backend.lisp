@@ -27,8 +27,7 @@
   (ecase (first argument)
     (:buffer (second argument))
     (:bytes argument)
-    ;; TODO: round up to 16 bytes, which Metal requires (#25)
-    (:shared (list :threadgroup (second argument)))))
+    (:shared (list :threadgroup (* 16 (ceiling (second argument) 16))))))
 
 (defmethod gpu:device-launch ((device metal-device) pipeline arguments grid group wait)
   (dispatch pipeline (mapcar #'metal-argument arguments) grid :group group :wait wait))

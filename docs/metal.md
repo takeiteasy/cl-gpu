@@ -48,7 +48,7 @@
 |---|---|
 | a buffer | the next `[[buffer(i)]]` |
 | `(:bytes type value)` | the next `[[buffer(i)]]`, a scalar or vector copied by value |
-| `(:threadgroup bytes)` | the next `[[threadgroup(k)]]`, for a `:shared` pointer |
+| `(:threadgroup bytes)` | the next `[[threadgroup(k)]]`, for a `:shared` pointer; `bytes` is rounded up to a multiple of 16 |
 
 `type` is a scalar or `(vec T n)`; a vector value is a sequence of its components. A 3-vector takes the space of a 4-vector, as in Metal.
 
