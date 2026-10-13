@@ -76,7 +76,7 @@
 (asdf:defsystem "cl-gpu/metal"
   :description "Metal runtime for cl-gpu"
   :license "GPL-3.0-only"
-  :depends-on ("cl-gpu" "cffi" "float-features")
+  :depends-on ("cl-gpu" "cffi" "float-features" "bordeaux-threads")
   :serial t
   :components ((:module "metal"
                 :serial t

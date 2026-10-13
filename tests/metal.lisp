@@ -72,6 +72,81 @@
     (metal:release buffer)
     (signals metal:metal-error (metal:buffer-size buffer))))
 
+;;; Private storage
+
+(defun private-buffer (bytes)
+  (metal:make-buffer (metal:default-device) bytes :storage :private))
+
+(test auto-storage-follows-unified-memory
+  (let ((device (metal:default-device)))
+    (metal:with-buffer (buffer device 16 :storage :auto)
+      (is (eq (if (metal:device-unified-memory-p device) :shared :private)
+              (metal:buffer-storage buffer))))
+    (metal:with-buffer (buffer device 16 :storage :shared)
+      (is (eq :shared (metal:buffer-storage buffer))))
+    (let ((metal:*buffer-storage* :private))
+      (metal:with-buffer (buffer device 16)
+        (is (eq :private (metal:buffer-storage buffer)))))
+    (signals metal:metal-error (metal:make-buffer device 16 :storage :managed))))
+
+(test private-buffers-start-zeroed-and-reject-overflow
+  (metal:with-buffer (buffer (metal:default-device) 6 :storage :private)
+    (is (= 6 (metal:buffer-size buffer)))
+    (is (equalp #(0 0 0 0 0 0) (read-back buffer 'gpu:u8 6)))
+    (signals metal:metal-error
+      (metal:copy-to-buffer buffer (make-array 7 :initial-element 0) :element-type 'gpu:u8))
+    (signals metal:metal-error (metal:buffer-pointer buffer))))
+
+(test private-buffers-round-trip-elements
+  (loop for (type values) in '((gpu:f32 #(1.5 -2.25 0.0))
+                               (gpu:u32 #(0 7 4294967295))
+                               (gpu:i8 #(-128 0 127))
+                               (gpu:u8 #(1 2 3))
+                               (gpu:bool #(t nil t nil t))
+                               (gpu:f16 #(1.5 -2.0 0.25))
+                               (gpu:bf16 #(1.5 -2.0 0.25 256.0 3.0)))
+        do (metal:with-buffer (buffer (metal:default-device) 64 :storage :private)
+             (metal:copy-to-buffer buffer values :element-type type)
+             (is (equalp values (read-back buffer type (length values)))
+                 "~a did not round-trip" type))))
+
+(test private-vector-elements-round-trip-with-zeroed-padding
+  (metal:with-buffer (buffer (metal:default-device) 32 :storage :private)
+    (metal:copy-to-buffer buffer #(1 2 3 4 5 6) :element-type '(gpu:vec gpu:f32 3))
+    (is (equalp #(1 2 3 4 5 6)
+                (read-back buffer '(gpu:vec gpu:f32 3) 6)))
+    (is (equalp #(1.0 2.0 3.0 0.0 4.0 5.0 6.0 0.0) (read-back buffer 'gpu:f32 8)))))
+
+(test private-partial-uploads-keep-the-bytes-after-them
+  (metal:with-buffer (buffer (metal:default-device) 8 :storage :private)
+    (metal:copy-to-buffer buffer #(1 2 3 4 5 6 7 8) :element-type 'gpu:u8)
+    (metal:copy-to-buffer buffer #(9 9 9) :element-type 'gpu:u8)
+    (is (equalp #(9 9 9 4 5 6 7 8) (read-back buffer 'gpu:u8 8)))
+    (metal:copy-to-buffer buffer #(7 7 7 7 7 7) :element-type 'gpu:u8)
+    (is (equalp #(7 7 7 7 7 7 7 8) (read-back buffer 'gpu:u8 8)))))
+
+(test private-transfers-reuse-and-grow-the-staging-buffer
+  (let ((device (metal:default-device)))
+    (metal:with-buffer (small device 16 :storage :private)
+      (metal:with-buffer (large device 40000 :storage :private)
+        (metal:copy-to-buffer small #(1 2 3 4) :element-type 'gpu:u32)
+        (metal:copy-to-buffer small #(5 6 7 8) :element-type 'gpu:u32)
+        (is (equalp #(5 6 7 8) (read-back small 'gpu:u32 4)))
+        (let ((values (filled 10000 (lambda (i) (* 3 i)))))
+          (metal:copy-to-buffer large values :element-type 'gpu:u32)
+          (is (equalp values (read-back large 'gpu:u32 10000))))
+        (metal:copy-to-buffer small #(9 9 9 9) :element-type 'gpu:u32)
+        (is (equalp #(9 9 9 9) (read-back small 'gpu:u32 4)))))))
+
+(test kernels-run-on-private-buffers
+  (with-kernel (pipeline "(setf (aref out (global-id 0)) (* 2 (aref in (global-id 0))))"
+                         "((out (ptr u32 :global)) (in (ptr u32 :global)))")
+    (metal:with-buffer (out (metal:default-device) 16 :storage :private)
+      (metal:with-buffer (in (metal:default-device) 16 :storage :private)
+        (metal:copy-to-buffer in #(1 2 3 4) :element-type 'gpu:u32)
+        (metal:dispatch pipeline (list out in) 4)
+        (is (equalp #(2 4 6 8) (read-back out 'gpu:u32 4)))))))
+
 ;;; Compiling
 
 (test compile-errors-carry-the-log

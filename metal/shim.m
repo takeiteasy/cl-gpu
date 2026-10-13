@@ -49,14 +49,18 @@ void *clgpu_queue_new(void *device) {
     return (void *)[(id<MTLDevice>)device newCommandQueue];
 }
 
-void *clgpu_buffer_new(void *device, unsigned long length) {
-    return (void *)[(id<MTLDevice>)device newBufferWithLength:length
-                                                      options:MTLResourceStorageModeShared];
+int clgpu_device_unified_memory(void *device) {
+    return [(id<MTLDevice>)device hasUnifiedMemory] ? 1 : 0;
+}
+
+void *clgpu_buffer_new(void *device, unsigned long length, int private_storage) {
+    return (void *)[(id<MTLDevice>)device
+        newBufferWithLength:length
+                    options:private_storage ? MTLResourceStorageModePrivate
+                                            : MTLResourceStorageModeShared];
 }
 
 void *clgpu_buffer_contents(void *buffer) { return [(id<MTLBuffer>)buffer contents]; }
-
-unsigned long clgpu_buffer_length(void *buffer) { return [(id<MTLBuffer>)buffer length]; }
 
 void *clgpu_library_new(void *device, const char *source, char **error) {
     @autoreleasepool {
@@ -167,6 +171,49 @@ static void commit(CLGPUStream *stream) {
 static void note_encoded(CLGPUStream *stream) {
     if (++stream->encoded >= COMMIT_EVERY)
         commit(stream);
+}
+
+// Blit copies and fills queue on the stream like dispatches. Offsets and lengths are multiples of 4,
+// which macOS requires of blits. Both return 0 on success.
+int clgpu_stream_copy(void *handle, void *source, unsigned long source_offset, void *target,
+                      unsigned long target_offset, unsigned long length, char **error) {
+    CLGPUStream *stream = (CLGPUStream *)handle;
+    @autoreleasepool {
+        @synchronized(stream) {
+            end_encoder(stream);
+            id<MTLBlitCommandEncoder> blit = [open_command(stream) blitCommandEncoder];
+            if (!blit) {
+                set_error(error, @"could not create a blit encoder");
+                return 1;
+            }
+            [blit copyFromBuffer:(id<MTLBuffer>)source
+                    sourceOffset:source_offset
+                        toBuffer:(id<MTLBuffer>)target
+               destinationOffset:target_offset
+                            size:length];
+            [blit endEncoding];
+            note_encoded(stream);
+            return 0;
+        }
+    }
+}
+
+int clgpu_stream_fill(void *handle, void *buffer, unsigned long length, char **error) {
+    CLGPUStream *stream = (CLGPUStream *)handle;
+    @autoreleasepool {
+        @synchronized(stream) {
+            end_encoder(stream);
+            id<MTLBlitCommandEncoder> blit = [open_command(stream) blitCommandEncoder];
+            if (!blit) {
+                set_error(error, @"could not create a blit encoder");
+                return 1;
+            }
+            [blit fillBuffer:(id<MTLBuffer>)buffer range:NSMakeRange(0, length) value:0];
+            [blit endEncoding];
+            note_encoded(stream);
+            return 0;
+        }
+    }
 }
 
 // Arguments are bound in order. KINDS[i] selects how VALUES[i] and LENGTHS[i] are used:

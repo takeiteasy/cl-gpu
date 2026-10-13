@@ -47,7 +47,7 @@ OpenCL goes first when the backends start, as the cheaper second check that the 
 | GPU `gemv` and `gemm`, with an MPS fast path ([done](blas-matrices.md)) | [#37](https://github.com/communal-software/cl-gpu/issues/37) |
 | Constant-stride batched `gemm` ([done](blas-matrices.md#batched-gemm)) | [#38](https://github.com/communal-software/cl-gpu/issues/38) |
 | Queued launches with batched command submission ([done](kernels.md#queued-launches)) | [#42](https://github.com/communal-software/cl-gpu/issues/42) |
-| Metal stream: tuned commit interval, waiting only on the buffers in use, per-thread streams | [#48](https://github.com/communal-software/cl-gpu/issues/48), [#49](https://github.com/communal-software/cl-gpu/issues/49), [#50](https://github.com/communal-software/cl-gpu/issues/50) |
+| Metal stream: tuned commit interval, waiting only on the buffers in use, per-thread streams, staging ring for private uploads | [#48](https://github.com/communal-software/cl-gpu/issues/48), [#49](https://github.com/communal-software/cl-gpu/issues/49), [#50](https://github.com/communal-software/cl-gpu/issues/50), [#51](https://github.com/communal-software/cl-gpu/issues/51) |
 | MPS for broadcast and negative-stride batched `gemm` | [#47](https://github.com/communal-software/cl-gpu/issues/47) |
 | Complex routines; f16/bf16/f64; rotations | [#39](https://github.com/communal-software/cl-gpu/issues/39), [#40](https://github.com/communal-software/cl-gpu/issues/40), [#41](https://github.com/communal-software/cl-gpu/issues/41) |
 | MLX for cl-inference, independent of cl-gpu | [cl-inference#43](https://github.com/communal-software/cl-inference/issues/43) |
@@ -64,4 +64,3 @@ Kernels print as Metal source and run through [`define-kernel`](kernels.md) on t
 - CUDA needs operators and broadcast for vector types ([#12](https://github.com/communal-software/cl-gpu/issues/12)).
 - Kernel errors have no source location when compiled from an editor buffer with `C-c C-c` ([#27](https://github.com/communal-software/cl-gpu/issues/27)).
 - Kernel pipelines of released devices stay cached ([#18](https://github.com/communal-software/cl-gpu/issues/18)).
-- Buffers use shared storage only ([#15](https://github.com/communal-software/cl-gpu/issues/15)).

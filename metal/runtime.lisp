@@ -44,10 +44,14 @@
 (defclass metal-device (metal-object)
   ((queue :initarg :queue :reader device-queue)
    (stream :initarg :stream :accessor device-stream)
-   (mps-support :initform :unknown :accessor device-mps-support)))
+   (mps-support :initform :unknown :accessor device-mps-support)
+   (staging :initform nil :accessor device-staging)
+   (staging-lock :initform (bt:make-lock "metal staging") :reader device-staging-lock)))
 
 (defclass metal-buffer (metal-object)
-  ((device :initarg :device :reader buffer-device)))
+  ((device :initarg :device :reader buffer-device)
+   (storage :initarg :storage :reader buffer-storage)
+   (size :initarg :size :reader buffer-bytes)))
 (defclass metal-library (metal-object)
   ((device :initarg :device :reader library-device)))
 (defclass metal-pipeline (metal-object)
@@ -71,6 +75,10 @@
 (defun device-name (device)
   (take-string (%device-name (live-handle device))))
 
+(defun device-unified-memory-p (device)
+  "True if the host and DEVICE share memory, as on Apple silicon."
+  (/= 0 (%device-unified-memory (live-handle device))))
+
 (defun device-max-threads (device)
   (%device-max-threads (live-handle device)))
 
@@ -91,6 +99,9 @@
   (unwind-protect (when (handle device)
                     (synchronize-device device))
     (when (handle device)
+      (when (device-staging device)
+        (release (device-staging device))
+        (setf (device-staging device) nil))
       (%release (device-stream device))
       (setf (device-stream device) nil)
       (%release (device-queue device))
@@ -199,23 +210,71 @@
 
 ;;; Buffers
 
-(defun make-buffer (device bytes)
-  "A zeroed BYTES-long buffer in memory shared by the host and device."
-  ;; TODO: private storage with blit copies for discrete GPUs (#15)
-  (let ((handle (%buffer-new (live-handle device) bytes)))
+(defvar *buffer-storage* :auto
+  "The storage MAKE-BUFFER uses unless told otherwise: :shared, :private, or :auto to share memory
+only where the host and device already do.")
+
+(defun resolve-storage (device storage)
+  (case storage
+    (:auto (if (device-unified-memory-p device) :shared :private))
+    ((:shared :private) storage)
+    (t (fail "storage is :auto, :shared or :private, got ~s" storage))))
+
+(defun align-4 (bytes)
+  "BYTES rounded up to a multiple of 4, which macOS requires of blit sizes."
+  (* 4 (ceiling bytes 4)))
+
+(defun check-blit (status message what)
+  (unless (zerop status)
+    (fail "~a" (or message what))))
+
+(defun blit-copy (device source source-offset target target-offset length)
+  "Queue a copy of LENGTH bytes between buffers of DEVICE."
+  (multiple-value-bind (status message)
+      (with-error-slot (slot)
+        (%stream-copy (device-stream device) (live-handle source) source-offset
+                      (live-handle target) target-offset length slot))
+    (check-blit status message "copy failed")))
+
+(defun blit-zero (device buffer length)
+  (multiple-value-bind (status message)
+      (with-error-slot (slot)
+        (%stream-fill (device-stream device) (live-handle buffer) length slot))
+    (check-blit status message "fill failed")))
+
+(defun make-buffer (device bytes &key (storage *buffer-storage*))
+  "A zeroed BYTES-long buffer. Shared storage is memory the host and device share; private storage
+is the device's own, reached by COPY-TO-BUFFER and COPY-FROM-BUFFER. STORAGE is :shared, :private
+or :auto, which is private unless the device shares memory with the host."
+  (let* ((storage (resolve-storage device storage))
+         (privatep (eq storage :private))
+         (handle (%buffer-new (live-handle device) (if privatep (align-4 bytes) bytes)
+                              (if privatep 1 0))))
     (when (cffi:null-pointer-p handle)
       (fail "could not allocate a ~d-byte buffer" bytes))
-    (let ((buffer (make-instance 'metal-buffer :handle handle :device device)))
-      (cffi:foreign-funcall "memset" :pointer (%buffer-contents handle) :int 0
-                                     :unsigned-long bytes :pointer)
+    (let ((buffer (make-instance 'metal-buffer :handle handle :device device
+                                               :storage storage :size bytes))
+          (done nil))
+      (unwind-protect
+           (progn
+             (if privatep
+                 (blit-zero device buffer (align-4 bytes))
+                 (cffi:foreign-funcall "memset" :pointer (%buffer-contents handle) :int 0
+                                                :unsigned-long bytes :pointer))
+             (setf done t))
+        (unless done
+          (release buffer)))
       buffer)))
 
 (defun buffer-size (buffer)
-  (%buffer-length (live-handle buffer)))
+  (live-handle buffer)
+  (buffer-bytes buffer))
 
 (defun buffer-pointer (buffer)
-  "The host address of BUFFER's contents, once the device has finished its dispatches.
-Valid until BUFFER is released."
+  "The host address of the shared BUFFER's contents, once the device has finished its dispatches.
+Valid until BUFFER is released. A private buffer has no host address."
+  (when (eq (buffer-storage buffer) :private)
+    (fail "a private buffer has no host address; use copy-to-buffer and copy-from-buffer"))
   ;; TODO: waits for the whole device, not only the dispatches that use BUFFER (#49)
   (synchronize-device (buffer-device buffer))
   (%buffer-contents (live-handle buffer)))
@@ -237,30 +296,80 @@ Valid until BUFFER is released."
   (multiple-value-bind (element component) (floor index count)
     (+ (* element stride) (* component width))))
 
+;;; Private buffers are reached through the device's shared staging buffer.
+;;; TODO: one staging buffer under one lock, and every upload waits for the device first; a ring of
+;;; staging buffers would let uploads overlap pending work (#51)
+
+(defun staging-buffer (device bytes)
+  "The device's staging buffer, grown to hold BYTES. The caller holds the staging lock."
+  (let ((staging (device-staging device)))
+    (if (and staging (>= (buffer-size staging) bytes))
+        staging
+        (progn
+          (when staging
+            (release staging))
+          (setf (device-staging device)
+                (make-buffer device (max 4096 (ash 1 (integer-length (1- bytes))))
+                             :storage :shared))))))
+
+(defun upload-private (buffer bytes store)
+  "Fill the first BYTES of private BUFFER by calling STORE on the host address of the staging buffer.
+Returns once the copy is queued."
+  (let ((device (buffer-device buffer))
+        (aligned (align-4 bytes)))
+    (when (plusp aligned)
+      (bt:with-lock-held ((device-staging-lock device))
+        (synchronize-device device)
+        (let* ((staging (staging-buffer device aligned))
+               (pointer (%buffer-contents (live-handle staging))))
+          (cffi:foreign-funcall "memset" :pointer pointer :int 0 :unsigned-long aligned :pointer)
+          (when (< bytes aligned)
+            (blit-copy device buffer (- aligned 4) staging (- aligned 4) 4)
+            (synchronize-device device))
+          (funcall store pointer)
+          (blit-copy device staging 0 buffer 0 aligned))))))
+
+(defun download-private (buffer bytes load)
+  "Call LOAD on the host address of the staging buffer holding the first BYTES of private BUFFER."
+  (let ((device (buffer-device buffer))
+        (aligned (align-4 bytes)))
+    (when (plusp aligned)
+      (bt:with-lock-held ((device-staging-lock device))
+        (let ((staging (staging-buffer device aligned)))
+          (blit-copy device buffer 0 staging 0 aligned)
+          (synchronize-device device)
+          (funcall load (%buffer-contents (live-handle staging))))))))
+
 (defun copy-to-buffer (buffer sequence &key (element-type 'gpu:f32))
   "Store the numbers in SEQUENCE in BUFFER from its start as ELEMENT-TYPE, a scalar or vector type.
 A vector's components are consecutive in SEQUENCE."
   (multiple-value-bind (name count stride) (element-layout element-type)
-    (transfer-elements buffer sequence count stride)
-    (let ((pointer (buffer-pointer buffer))
-          (width (element-bytes name))
-          (index -1))
-      (map nil (lambda (value)
-                 (write-element pointer name value
-                                (component-offset (incf index) count stride width)))
-           sequence))
-    buffer))
+    (let ((elements (transfer-elements buffer sequence count stride))
+          (width (element-bytes name)))
+      (flet ((store (pointer)
+               (let ((index -1))
+                 (map nil (lambda (value)
+                            (write-element pointer name value
+                                           (component-offset (incf index) count stride width)))
+                      sequence))))
+        (if (eq (buffer-storage buffer) :private)
+            (upload-private buffer (* elements stride) #'store)
+            (store (buffer-pointer buffer))))))
+  buffer)
 
 (defun copy-from-buffer (buffer sequence &key (element-type 'gpu:f32))
   "Fill SEQUENCE with the components of elements of ELEMENT-TYPE read from the start of BUFFER."
   (multiple-value-bind (name count stride) (element-layout element-type)
-    (transfer-elements buffer sequence count stride)
-    (let ((pointer (buffer-pointer buffer))
+    (let ((elements (transfer-elements buffer sequence count stride))
           (width (element-bytes name)))
-      (dotimes (index (length sequence))
-        (setf (elt sequence index)
-              (read-element pointer name (component-offset index count stride width)))))
-    sequence))
+      (flet ((fetch (pointer)
+               (dotimes (index (length sequence))
+                 (setf (elt sequence index)
+                       (read-element pointer name (component-offset index count stride width))))))
+        (if (eq (buffer-storage buffer) :private)
+            (download-private buffer (* elements stride) #'fetch)
+            (fetch (buffer-pointer buffer))))))
+  sequence)
 
 ;;; Libraries and pipelines
 

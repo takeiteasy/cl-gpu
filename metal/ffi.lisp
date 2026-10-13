@@ -22,9 +22,10 @@
   (device :pointer))
 (defshim ("clgpu_queue_new" %queue-new) :pointer (device :pointer))
 
-(defshim ("clgpu_buffer_new" %buffer-new) :pointer (device :pointer) (length :unsigned-long))
+(defshim ("clgpu_device_unified_memory" %device-unified-memory) :int (device :pointer))
+(defshim ("clgpu_buffer_new" %buffer-new) :pointer
+  (device :pointer) (length :unsigned-long) (private :int))
 (defshim ("clgpu_buffer_contents" %buffer-contents) :pointer (buffer :pointer))
-(defshim ("clgpu_buffer_length" %buffer-length) :unsigned-long (buffer :pointer))
 
 (defshim ("clgpu_library_new" %library-new) :pointer
   (device :pointer) (source :string) (error :pointer))
@@ -39,6 +40,11 @@
 (defshim ("clgpu_stream_dispatch" %stream-dispatch) :int
   (stream :pointer) (pipeline :pointer) (count :int) (kinds :pointer) (values :pointer)
   (lengths :pointer) (grid :pointer) (group :pointer) (error :pointer))
+(defshim ("clgpu_stream_copy" %stream-copy) :int
+  (stream :pointer) (source :pointer) (source-offset :unsigned-long) (target :pointer)
+  (target-offset :unsigned-long) (length :unsigned-long) (error :pointer))
+(defshim ("clgpu_stream_fill" %stream-fill) :int
+  (stream :pointer) (buffer :pointer) (length :unsigned-long) (error :pointer))
 (defshim ("clgpu_stream_wait" %stream-wait) :int (stream :pointer) (error :pointer))
 
 (defshim ("clgpu_mps_supported" %mps-supported) :int (device :pointer))
