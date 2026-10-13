@@ -186,27 +186,28 @@
           ((zerop exponent) (* sign (scale-float (coerce mantissa 'single-float) -24)))
           (t (* sign (scale-float (coerce (+ 1024 mantissa) 'single-float) (- exponent 25)))))))
 
-(defun encode-element (name value)
+(defun element-encoder (name)
+  "A function turning a Lisp number into the bits a buffer holds for scalar NAME."
   (ecase name
-    (gpu:f16 (f16-bits value))
-    (gpu:bf16 (bf16-bits value))
-    (gpu:f32 (coerce value 'single-float))
-    (gpu:f64 (coerce value 'double-float))
-    (gpu:bool (if value 1 0))
-    ((gpu:i8 gpu:i16 gpu:i32 gpu:i64 gpu:u8 gpu:u16 gpu:u32 gpu:u64) value)))
+    (gpu:f16 #'f16-bits)
+    (gpu:bf16 #'bf16-bits)
+    (gpu:f32 (lambda (value) (coerce value 'single-float)))
+    (gpu:f64 (lambda (value) (coerce value 'double-float)))
+    (gpu:bool (lambda (value) (if value 1 0)))
+    ((gpu:i8 gpu:i16 gpu:i32 gpu:i64 gpu:u8 gpu:u16 gpu:u32 gpu:u64) #'identity)))
 
-(defun decode-element (name raw)
+(defun element-decoder (name)
   (ecase name
-    (gpu:f16 (bits-f16 raw))
-    (gpu:bf16 (bits-bf16 raw))
-    (gpu:bool (/= raw 0))
-    ((gpu:f32 gpu:f64 gpu:i8 gpu:i16 gpu:i32 gpu:i64 gpu:u8 gpu:u16 gpu:u32 gpu:u64) raw)))
+    (gpu:f16 #'bits-f16)
+    (gpu:bf16 #'bits-bf16)
+    (gpu:bool (lambda (raw) (/= raw 0)))
+    ((gpu:f32 gpu:f64 gpu:i8 gpu:i16 gpu:i32 gpu:i64 gpu:u8 gpu:u16 gpu:u32 gpu:u64) #'identity)))
 
 (defun write-element (pointer name value offset)
-  (setf (cffi:mem-ref pointer (element-ctype name) offset) (encode-element name value)))
+  (setf (cffi:mem-ref pointer (element-ctype name) offset) (funcall (element-encoder name) value)))
 
 (defun read-element (pointer name offset)
-  (decode-element name (cffi:mem-ref pointer (element-ctype name) offset)))
+  (funcall (element-decoder name) (cffi:mem-ref pointer (element-ctype name) offset)))
 
 ;;; Buffers
 
@@ -291,10 +292,16 @@ Valid until BUFFER is released. A private buffer has no host address."
     (check-fits buffer elements stride)
     elements))
 
-(defun component-offset (index count stride width)
-  "Byte offset of component INDEX of a flat sequence of elements of COUNT components."
-  (multiple-value-bind (element component) (floor index count)
-    (+ (* element stride) (* component width))))
+(defun component-offsets (count stride width)
+  "A function returning the byte offset of each component in turn of a flat sequence of elements of
+COUNT components, STRIDE bytes apart."
+  (let ((base 0)
+        (component 0))
+    (lambda ()
+      (prog1 (+ base (* component width))
+        (when (= (incf component) count)
+          (setf component 0)
+          (incf base stride))))))
 
 ;;; Private buffers are reached through the device's shared staging buffer.
 ;;; TODO: one staging buffer under one lock, and every upload waits for the device first; a ring of
@@ -340,32 +347,79 @@ Returns once the copy is queued."
           (synchronize-device device)
           (funcall load (%buffer-contents (live-handle staging))))))))
 
+(defun raw-lisp-type (name)
+  "The Lisp type whose vectors hold scalar NAME exactly as a buffer does, or NIL if values need
+encoding or the implementation stores that type boxed."
+  (let ((type (case name
+                (gpu:f32 'single-float)
+                (gpu:f64 'double-float)
+                (gpu:i8 '(signed-byte 8)) (gpu:i16 '(signed-byte 16))
+                (gpu:i32 '(signed-byte 32)) (gpu:i64 '(signed-byte 64))
+                (gpu:u8 '(unsigned-byte 8)) (gpu:u16 '(unsigned-byte 16))
+                (gpu:u32 '(unsigned-byte 32)) (gpu:u64 '(unsigned-byte 64)))))
+    (when (and type (equal (upgraded-array-element-type type) type))
+      type)))
+
+(defun raw-vector-p (sequence name)
+  "True if SEQUENCE is a simple vector whose bytes are the buffer encoding of scalar NAME."
+  (let ((type (raw-lisp-type name)))
+    (and type (typep sequence `(simple-array ,type (*))))))
+
+(defun copy-bytes (target source length)
+  (cffi:foreign-funcall "memcpy" :pointer target :pointer source :unsigned-long length :pointer))
+
+(defun bulk-copy (pointer vector count stride width tobuffer)
+  "Copy the components of the raw VECTOR to or from the buffer memory at POINTER, a flat sequence
+of elements of COUNT components laid out STRIDE bytes apart."
+  (cffi:with-pointer-to-vector-data (host vector)
+    (flet ((copy (buffer-offset host-offset length)
+             (let ((buffer (cffi:inc-pointer pointer buffer-offset))
+                   (host (cffi:inc-pointer host host-offset)))
+               (if tobuffer
+                   (copy-bytes buffer host length)
+                   (copy-bytes host buffer length)))))
+      (if (= count 3)
+          (dotimes (element (floor (length vector) 3))
+            (copy (* element stride) (* element 3 width) (* 3 width)))
+          (copy 0 0 (* (length vector) width))))))
+
 (defun copy-to-buffer (buffer sequence &key (element-type 'gpu:f32))
   "Store the numbers in SEQUENCE in BUFFER from its start as ELEMENT-TYPE, a scalar or vector type.
-A vector's components are consecutive in SEQUENCE."
+A vector's components are consecutive in SEQUENCE. A simple vector specialised to the Lisp type of
+the elements' scalar (e.g. single-float for f32) is copied in bulk."
   (multiple-value-bind (name count stride) (element-layout element-type)
     (let ((elements (transfer-elements buffer sequence count stride))
           (width (element-bytes name)))
       (flet ((store (pointer)
-               (let ((index -1))
-                 (map nil (lambda (value)
-                            (write-element pointer name value
-                                           (component-offset (incf index) count stride width)))
-                      sequence))))
+               (if (raw-vector-p sequence name)
+                   (bulk-copy pointer sequence count stride width t)
+                   (let ((ctype (element-ctype name))
+                         (encode (element-encoder name))
+                         (next (component-offsets count stride width)))
+                     (map nil (lambda (value)
+                                (setf (cffi:mem-ref pointer ctype (funcall next))
+                                      (funcall encode value)))
+                          sequence)))))
         (if (eq (buffer-storage buffer) :private)
             (upload-private buffer (* elements stride) #'store)
             (store (buffer-pointer buffer))))))
   buffer)
 
 (defun copy-from-buffer (buffer sequence &key (element-type 'gpu:f32))
-  "Fill SEQUENCE with the components of elements of ELEMENT-TYPE read from the start of BUFFER."
+  "Fill SEQUENCE with the components of elements of ELEMENT-TYPE read from the start of BUFFER.
+A simple vector specialised as for COPY-TO-BUFFER is filled in bulk."
   (multiple-value-bind (name count stride) (element-layout element-type)
     (let ((elements (transfer-elements buffer sequence count stride))
           (width (element-bytes name)))
       (flet ((fetch (pointer)
-               (dotimes (index (length sequence))
-                 (setf (elt sequence index)
-                       (read-element pointer name (component-offset index count stride width))))))
+               (if (raw-vector-p sequence name)
+                   (bulk-copy pointer sequence count stride width nil)
+                   (let ((ctype (element-ctype name))
+                         (decode (element-decoder name))
+                         (next (component-offsets count stride width)))
+                     (map-into sequence
+                               (lambda ()
+                                 (funcall decode (cffi:mem-ref pointer ctype (funcall next)))))))))
         (if (eq (buffer-storage buffer) :private)
             (download-private buffer (* elements stride) #'fetch)
             (fetch (buffer-pointer buffer))))))

@@ -117,6 +117,71 @@
              (is (equalp values (read-back buffer type (length values)))
                  "~a did not round-trip" type))))
 
+(defparameter *raw-samples*
+  `((gpu:f32 single-float #(1.5 -2.25 0.0 3.0e10))
+    (gpu:f64 double-float #(1.5d0 -2.25d-200 0.0d0 3.0d100))
+    (gpu:i8 (signed-byte 8) #(-128 0 127 5))
+    (gpu:i16 (signed-byte 16) #(-32768 0 32767 5))
+    (gpu:i32 (signed-byte 32) #(-2147483648 0 2147483647 5))
+    (gpu:i64 (signed-byte 64) #(-9223372036854775808 0 9223372036854775807 5))
+    (gpu:u8 (unsigned-byte 8) #(0 1 255 5))
+    (gpu:u16 (unsigned-byte 16) #(0 1 65535 5))
+    (gpu:u32 (unsigned-byte 32) #(0 1 4294967295 5))
+    (gpu:u64 (unsigned-byte 64) #(0 1 18446744073709551615 5))))
+
+(test specialised-vectors-round-trip-in-bulk
+  (dolist (storage '(:shared :private))
+    (loop for (type lisp-type values) in *raw-samples*
+          do (metal:with-buffer (buffer (metal:default-device) 64 :storage storage)
+               (let ((source (coerce values `(simple-array ,lisp-type (*))))
+                     (result (make-array (length values) :element-type lisp-type)))
+                 (metal:copy-to-buffer buffer source :element-type type)
+                 (is (equalp source (metal:copy-from-buffer buffer result :element-type type))
+                     "~a ~a did not round-trip" storage type)
+                 (is (equalp values (read-back buffer type (length values)))
+                     "~a ~a bulk write differs from generic read" storage type))))))
+
+(test specialised-vectors-fill-a-prefix-and-reject-overflow
+  (dolist (storage '(:shared :private))
+    (metal:with-buffer (buffer (metal:default-device) 16 :storage storage)
+      (metal:copy-to-buffer buffer (coerce #(1 2 3 4) '(simple-array (signed-byte 32) (*)))
+                            :element-type 'gpu:i32)
+      (let ((prefix (make-array 2 :element-type '(signed-byte 32))))
+        (is (equalp #(1 2) (metal:copy-from-buffer buffer prefix :element-type 'gpu:i32))))
+      (signals metal:metal-error
+        (metal:copy-to-buffer buffer (make-array 5 :element-type '(signed-byte 32))
+                              :element-type 'gpu:i32))
+      (is (equalp #(1 2 3 4) (read-back buffer 'gpu:i32 4))))))
+
+(test specialised-three-vectors-skip-the-padding
+  (metal:with-buffer (buffer (metal:default-device) 32 :storage :shared)
+    (metal:copy-to-buffer buffer #(9 9 9 9 9 9 9 9) :element-type 'gpu:f32)
+    (metal:copy-to-buffer buffer (coerce #(1.0 2.0 3.0 4.0 5.0 6.0) '(simple-array single-float (*)))
+                          :element-type '(gpu:vec gpu:f32 3))
+    (is (equalp #(1.0 2.0 3.0 9.0 4.0 5.0 6.0 9.0) (read-back buffer 'gpu:f32 8)))
+    (let ((result (make-array 6 :element-type 'single-float)))
+      (is (equalp #(1.0 2.0 3.0 4.0 5.0 6.0)
+                  (metal:copy-from-buffer buffer result :element-type '(gpu:vec gpu:f32 3)))))))
+
+(test other-sequences-copy-component-by-component
+  (dolist (storage '(:shared :private))
+    (metal:with-buffer (buffer (metal:default-device) 32 :storage storage)
+      (let ((expected #(1.0 2.0 3.0 4.0)))
+        (dolist (source (list '(1 2 3 4)
+                              (coerce #(1.0d0 2.0d0 3.0d0 4.0d0) '(simple-array double-float (*)))
+                              (make-array 4 :initial-contents '(1 2 3 4) :adjustable t)
+                              (make-array 4 :element-type 'single-float
+                                            :initial-contents '(1.0 2.0 3.0 4.0)
+                                            :adjustable t)))
+          (metal:copy-to-buffer buffer source)
+          (is (equalp expected (read-back buffer 'gpu:f32 4))))
+        (let ((list (list 0 0 0 0)))
+          (is (equal '(1.0 2.0 3.0 4.0) (metal:copy-from-buffer buffer list))))
+        (metal:copy-to-buffer buffer '(1 2 3 4) :element-type 'gpu:f64)
+        (let ((doubles (make-array 4 :element-type 'double-float)))
+          (is (equalp #(1.0d0 2.0d0 3.0d0 4.0d0)
+                      (metal:copy-from-buffer buffer doubles :element-type 'gpu:f64))))))))
+
 (test private-vector-elements-round-trip-with-zeroed-padding
   (metal:with-buffer (buffer (metal:default-device) 32 :storage :private)
     (metal:copy-to-buffer buffer #(1 2 3 4 5 6) :element-type '(gpu:vec gpu:f32 3))
@@ -575,3 +640,38 @@ kernel void present() {}")
     (gpu:with-gpu-array (out (gpu:make-gpu-array 1))
       (funcall (kernel-function "two-sum") in out :grid 1)
       (is (equalp #(1.0) (gpu:from-device out))))))
+
+;;; Array transfers
+
+(test from-device-returns-vectors-specialised-to-the-element-type
+  (flet ((type-of-result (data type &rest keys)
+           (gpu:with-gpu-array (array (gpu:to-device data :element-type type))
+             (type-of (apply #'gpu:from-device array keys)))))
+    (is (subtypep (type-of-result #(1.0 2.0) 'gpu:f32) '(simple-array single-float (*))))
+    (is (subtypep (type-of-result #(1.0 2.0) 'gpu:f16) '(simple-array single-float (*))))
+    (is (subtypep (type-of-result #(1.0 2.0) 'gpu:f64) '(simple-array double-float (*))))
+    (is (subtypep (type-of-result #(1 2) 'gpu:i32) '(simple-array (signed-byte 32) (*))))
+    (is (subtypep (type-of-result #(1 2) 'gpu:u8) '(simple-array (unsigned-byte 8) (*))))
+    (is (subtypep (type-of-result #(t nil) 'gpu:bool) 'simple-vector))
+    (is (subtypep (type-of-result #(1.0 2.0 3.0 4.0) '(gpu:vec gpu:f32 2) :flat t)
+                  '(simple-array single-float (*))))))
+
+(test vector-elements-round-trip-through-specialised-vectors
+  (dolist (storage '(:shared :private))
+    (let ((gpu::*device* nil)
+          (metal:*buffer-storage* storage))
+      (gpu:with-gpu-array (array (gpu:to-device '(#(1 2 3) (4 5 6)) :element-type '(gpu:vec gpu:f32 3)))
+        (let ((elements (gpu:from-device array)))
+          (is (equalp #(#(1.0 2.0 3.0) #(4.0 5.0 6.0)) elements))
+          (is (typep (aref elements 0) '(simple-array single-float (3)))))
+        (is (equalp #(1.0 2.0 3.0 4.0 5.0 6.0) (gpu:from-device array :flat t)))))))
+
+(test large-transfers-round-trip
+  (let* ((count 100000)
+         (data (make-array count :element-type 'single-float)))
+    (dotimes (index count)
+      (setf (aref data index) (float index 1.0)))
+    (dolist (storage '(:shared :private))
+      (let ((metal:*buffer-storage* storage))
+        (gpu:with-gpu-array (array (gpu:to-device data))
+          (is (equalp data (gpu:from-device array))))))))

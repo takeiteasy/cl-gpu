@@ -535,7 +535,7 @@ a reversed view is compared with the reversed data in row-major order."
   (replace buffer sequence))
 (defmethod gpu:device-load ((device mock-device) buffer sequence element-type)
   (declare (ignore element-type))
-  (replace sequence buffer))
+  (map-into sequence (lambda (value) (coerce value (array-element-type sequence))) buffer))
 (defmethod gpu:device-prepare ((device mock-device) source entry-name &key &allow-other-keys)
   entry-name)
 (defmethod gpu:device-launch ((device mock-device) prepared arguments grid group)

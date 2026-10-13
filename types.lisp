@@ -135,6 +135,14 @@
         `(signed-byte ,bits)
         `(unsigned-byte ,bits))))
 
+(defun lisp-element-type (type)
+  "The CL type of the numbers an array of scalar or vector TYPE holds; T for bool."
+  (let ((scalar (if (vector-type-p type) (vector-type-element type) type)))
+    (case (scalar-type-kind scalar)
+      (:float (if (eql (scalar-type-bits scalar) 64) 'double-float 'single-float))
+      (:bool t)
+      (t (integer-range scalar)))))
+
 (defun type-bytes (type)
   "Size of a numeric scalar or vector in bytes, or NIL. A 3-vector takes the space of a 4-vector."
   (typecase type

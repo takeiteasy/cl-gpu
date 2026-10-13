@@ -22,7 +22,7 @@
   (replace buffer sequence))
 (defmethod gpu:device-load ((device mock-device) buffer sequence element-type)
   (declare (ignore element-type))
-  (replace sequence buffer))
+  (map-into sequence (lambda (value) (coerce value (array-element-type sequence))) buffer))
 (defmethod gpu:device-prepare ((device mock-device) source entry-name &key precise-math)
   (push (list source entry-name precise-math) (prepared device))
   entry-name)

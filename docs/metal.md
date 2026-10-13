@@ -26,8 +26,8 @@
 |---|---|
 | `(default-device)` | the system GPU; `device-name`, `device-max-threads`, `device-max-threadgroup-memory` (bytes) |
 | `(make-buffer device bytes &key storage)` | a zeroed buffer; `storage` is `:auto`, `:shared` or `:private` ([Storage](#storage)) |
-| `(copy-to-buffer buffer sequence &key element-type)` | stores numbers from the buffer's start; `element-type` is a scalar or vector type, default `f32` |
-| `(copy-from-buffer buffer sequence &key element-type)` | fills `sequence` from the buffer's start |
+| `(copy-to-buffer buffer sequence &key element-type)` | stores numbers from the buffer's start; `element-type` is a scalar or vector type, default `f32`[^3] |
+| `(copy-from-buffer buffer sequence &key element-type)` | fills `sequence` from the buffer's start[^3] |
 | `(buffer-pointer buffer)`, `(buffer-size buffer)` | host address (shared buffers only) and size in bytes |
 | `(buffer-storage buffer)`, `(device-unified-memory-p device)` | `:shared` or `:private`; whether the host and GPU share memory |
 | `(compile-library device source)` | a library; a compile error signals `metal-compile-error` with the compiler's log |
@@ -63,7 +63,7 @@ A private transfer copies through a shared staging buffer that each device keeps
 
 `type` is a scalar or `(vec T n)`; a vector value is a sequence of its components. A 3-vector takes the space of a 4-vector, as in Metal.
 
-`copy-to-buffer` and `copy-from-buffer` take the components of vector elements consecutively in `sequence`. A 3-vector takes the space of a 4-vector in the buffer, and the padding is left alone.
+`copy-to-buffer` and `copy-from-buffer` take the components of vector elements consecutively in `sequence`. A 3-vector takes the space of a 4-vector in the buffer. The padding of a shared buffer is left alone; a private upload zeroes it.
 
 ## Streams
 
@@ -95,3 +95,4 @@ The shim links MetalPerformanceShaders. With `cl-gpu/blas` loaded, `device-gemm`
 
 [^1]: A private buffer is rounded up to a multiple of 4 bytes, which Metal requires of blit copies; `buffer-size` still reports the requested size. A partial upload leaves the bytes after it unchanged. The private path is tested on Apple silicon by binding `*buffer-storage*`; it has not run on a discrete GPU.
 [^2]: `dispatch` uses Metal's non-uniform threadgroups, available on Apple silicon GPUs.
+[^3]: A simple vector whose element type matches the buffer's scalar is copied with one `memcpy`: `single-float` for `f32`, `double-float` for `f64`, `(signed-byte N)` for `iN` and `(unsigned-byte N)` for `uN`. `f16`, `bf16`, `bool` and every other sequence are converted one component at a time. 1,000,000 `f32` take about 1 ms by `memcpy` and about 100 ms otherwise (Apple M1).

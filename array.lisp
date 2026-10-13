@@ -52,19 +52,24 @@ The array is freed when garbage collected, or sooner by FREE."
     array))
 
 (defun flat-components (type sequence)
-  "The components in SEQUENCE: numbers, or for a vector TYPE a sequence per element."
+  "The components in SEQUENCE: numbers, or for a vector TYPE a sequence per element, which is
+flattened into a vector specialised to the component type."
   (if (and (vector-type-p type)
            (plusp (length sequence))
            (typep (elt sequence 0) 'sequence))
-      (let ((count (component-count type))
-            (components (make-array (* (length sequence) (component-count type)))))
-        (map nil (let ((index 0))
-                   (lambda (element)
-                     (unless (and (typep element 'sequence) (= (length element) count))
-                       (gpu-fail "~s is not ~d components of ~a"
-                                 element count (type-description type)))
-                     (replace components element :start1 index)
-                     (incf index count)))
+      (let* ((count (component-count type))
+             (lisp-type (lisp-element-type type))
+             (floatp (float-type-p type))
+             (components (make-array (* (length sequence) count) :element-type lisp-type))
+             (index 0))
+        (map nil (lambda (element)
+                   (unless (and (typep element 'sequence) (= (length element) count))
+                     (gpu-fail "~s is not ~d components of ~a"
+                               element count (type-description type)))
+                   (map nil (lambda (value)
+                              (setf (aref components index) (if floatp (coerce value lisp-type) value))
+                              (incf index))
+                        element))
              sequence)
         components)
       sequence))
@@ -90,8 +95,8 @@ element or all the components in one flat sequence."
                     :element-type type :device device :initial-contents components)))
 
 (defun from-device (array &key into flat)
-  "The contents of ARRAY in a new vector, or in the first elements of INTO if given.
-A vector element is a vector of its components, or with FLAT the components are in one sequence."
+  "The contents of ARRAY in a new vector specialised to the element type, or in the first elements of
+INTO if given. A vector element is a vector of its components, or with FLAT the components are in one sequence."
   (let* ((type (gpu-array-element-type array))
          (count (component-count type))
          (limit (gpu-array-length array)))
@@ -99,14 +104,16 @@ A vector element is a vector of its components, or with FLAT the components are 
              (device-load (gpu-array-device array) (live-buffer array) components type)))
       (if (and (vector-type-p type) (not flat))
           (let* ((elements (or into (make-array limit)))
-                 (components (make-array (* count (length elements)))))
+                 (components (make-array (* count (length elements))
+                                         :element-type (lisp-element-type type))))
             (unless (<= (length elements) limit)
               (gpu-fail "~d elements do not fit from an array of ~d" (length elements) limit))
             (load-into components)
             (dotimes (index (length elements) elements)
               (setf (elt elements index)
                     (subseq components (* index count) (* (1+ index) count)))))
-          (let ((components (or into (make-array (* count limit)))))
+          (let ((components (or into (make-array (* count limit)
+                                                  :element-type (lisp-element-type type)))))
             (unless (and (zerop (mod (length components) count))
                          (<= (length components) (* count limit)))
               (gpu-fail "~d components do not fit from an array of ~d ~a"

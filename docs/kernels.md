@@ -61,7 +61,7 @@ Metal compiles libraries with fast math on by default; other kernels keep it.
 |---|---|
 | `(make-gpu-array length &key element-type device initial-contents)` | a zeroed array; `element-type` is a scalar or `(vec T n)` type, default `f32` |
 | `(to-device sequence &key element-type device)` | a new array holding the contents of `sequence` |
-| `(from-device array &key into flat)` | a new vector of the contents, or fills the first elements of `into` |
+| `(from-device array &key into flat)` | a new vector of the contents, specialised to the element type, or fills the first elements of `into`[^6] |
 | `(free array)` | releases the device memory; freeing twice is harmless |
 | `(with-gpu-array (var form) body)` | binds the array and frees it on exit |
 | `gpu-array-length`, `gpu-array-element-type`, `gpu-array-device` | readers |
@@ -124,3 +124,4 @@ A backend implements `device-target`, `device-allocate`, `device-free`, `device-
 [^3]: A 3-vector takes the space of a 4-vector in the buffer, as in Metal; the padding is never read or written. `:flat` has no effect on scalar arrays.
 [^4]: The location comes from re-reading the file being compiled or loaded and finding the `define-kernel` form in it. There is none for a form produced by another macro, written with `#.`, a backquote or an uninterned symbol, or evaluated at the REPL. Two identical `define-kernel` forms in one file both point at the first.
 [^5]: On Metal, launches share one command buffer that is committed after 64 of them and at every wait. 2000 launches of a 256-thread kernel take 8 ms queued and 220 ms with `:wait t` on each (Apple M1).
+[^6]: `f32`, `f16` and `bf16` arrays give `single-float` vectors, `f64` gives `double-float`, integers give `(signed-byte N)` or `(unsigned-byte N)`, and `bool` gives a simple vector. On Metal a simple vector of the matching type (`single-float` for `f32`, `(signed-byte 32)` for `i32`, and so on) transfers with one `memcpy`; 1,000,000 `f32` take about 1 ms, against about 100 ms for any other sequence (Apple M1).
