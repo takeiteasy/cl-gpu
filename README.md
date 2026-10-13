@@ -2,7 +2,9 @@
 
 > **Work in progress.** This project is under development; expect missing features and breaking changes.
 
-S-expression GPU kernel DSL for Common Lisp with Metal, CUDA and OpenCL backends.
+S-expression GPU kernel DSL for Common Lisp with Metal, CUDA\* and OpenCL\* backends.
+
+\*Planned.
 
 See the [plan](docs/PLAN.md) for status and phases. To run kernels, see [kernels and arrays](docs/kernels.md). For kernel internals: [forms](docs/kernel-forms.md), [types](docs/types.md), [intrinsics](docs/intrinsics.md), the [IR](docs/kernel-ir.md), the [printers](docs/printers.md) and the [Metal runtime](docs/metal.md).
 

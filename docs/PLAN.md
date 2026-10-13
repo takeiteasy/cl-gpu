@@ -37,7 +37,7 @@ The kernel DSL and the Metal runtime stabilise first: the open `dsl`, `arch` and
 | OpenCL | Apple's OpenCL 1.2 runs on the Mac, and [PoCL](https://portablecl.org) (`brew install pocl`, `pocl-opencl-icd` on Linux) is a CPU implementation of OpenCL 3.0. Apple's lacks `f64` on Apple silicon and OpenCL 2.0 atomics. |
 | CUDA | Printer snapshot tests need nothing. `nvcc -ptx` or NVRTC checks that generated source compiles on a Linux machine with the toolkit, without a GPU. Running kernels needs a rented GPU, on `workflow_dispatch` only. |
 
-OpenCL goes first when the backends start, as the cheaper second check that the backend protocol in `src/device.lisp` is not shaped around Metal.
+OpenCL goes first when the backends start, as the cheaper second check that the backend protocol in `device.lisp` is not shaped around Metal.
 
 ## Later
 
