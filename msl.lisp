@@ -130,15 +130,6 @@ inline T cl_gpu_fmod(T a, T b) {
 
 ;;; Threadgroup arrays are declared at kernel scope. A cleared one is filled by the whole
 ;;; group before any thread continues, ahead of any return that would skip the barrier.
-(defun shared-arrays (kernel)
-  (let ((found '()))
-    (dolist (statement (ir-kernel-body kernel))
-      (map-ir (lambda (node)
-                (when (and (ir-array-p node) (shared-array-p node))
-                  (push node found)))
-              statement))
-    (nreverse found)))
-
 (defun element-zero-statement (printer array)
   (let* ((storage (array-storage-name printer (ir-array-variable array)))
          (element (pointer-type-pointee (ir-variable-type (ir-array-variable array)))))

@@ -9,7 +9,7 @@
    #:wait
    ;; Backends
    #:*device* #:current-device #:register-backend
-   #:device-target #:device-allocate #:device-free #:device-store #:device-load
+   #:device-target #:device-shared-memory-limit #:device-allocate #:device-free #:device-store #:device-load
    #:device-prepare #:device-launch
    ;; Reader
    #:read-kernel

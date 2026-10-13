@@ -7,9 +7,11 @@
 (defclass mock-device ()
   ((prepared :initform '() :accessor prepared)
    (launches :initform '() :accessor launches)
-   (freed :initform 0 :accessor freed)))
+   (freed :initform 0 :accessor freed)
+   (limit :initform nil :initarg :limit)))
 
 (defmethod gpu:device-target ((device mock-device)) :metal)
+(defmethod gpu:device-shared-memory-limit ((device mock-device)) (slot-value device 'limit))
 (defmethod gpu:device-allocate ((device mock-device) bytes) (make-array bytes :initial-element 0))
 (defmethod gpu:device-free ((device mock-device) buffer) (incf (freed device)))
 (defmethod gpu:device-store ((device mock-device) buffer sequence element-type)
@@ -211,6 +213,57 @@
      "(define-kernel named ((out (ptr f32 :global)) (grid u32) (wait f32) (group u32) (pi f32))
         (setf (aref out grid) (+ wait pi (convert f32 group))))")
     (funcall (kernel-function "named") (gpu:make-gpu-array 4) 1 2.0 3 3.0 :grid 1)
+    (is (= 1 (length (launches device))))))
+
+;;; Shared memory limit
+
+(defun define-tiled-kernel (name)
+  (eval-kernel-text
+   (format nil "(define-kernel ~a ((out (ptr f32 :global)) (extra (ptr f32 :shared)))
+                  (let ((tile (shared-array f32 64)))
+                    (setf (aref tile 0) 1.0)
+                    (barrier)
+                    (setf (aref out 0) (aref tile 0))))"
+           name)))
+
+(test shared-memory-counts-arrays-atomics-and-vectors
+  (eval-kernel-text
+   "(define-kernel shared-sizes ((out (ptr f32 :global)))
+      (let ((a (shared-array (vec f32 3) 2))
+            (b (shared-array (atomic u32) 4))
+            (c (shared-array bool 3)))
+        (setf (aref out 0) 0.0)))")
+  (is (= (+ 32 16 3)
+         (gpu::gpu-kernel-shared-bytes
+          (gpu:find-kernel (intern "SHARED-SIZES" '#:cl-gpu/tests/kernel))))))
+
+(test launches-stay-within-the-shared-memory-limit
+  (let* ((device (make-instance 'mock-device :limit 300))
+         (gpu:*device* device))
+    (define-tiled-kernel "tiled-a")
+    (let ((function (kernel-function "tiled-a"))
+          (out (gpu:make-gpu-array 1)))
+      (is (null (funcall function out 11 :grid 1)) "256 + 44 bytes is at the limit")
+      (let ((message (handler-case (funcall function out 12 :grid 1)
+                       (gpu:gpu-error (condition) (gpu:gpu-error-message condition)))))
+        (is (stringp message))
+        (is (search "tiled-a" message))
+        (is (search "304" message))
+        (is (search "300" message)))
+      (is (= 1 (length (launches device))) "the refused launch never reaches the device"))))
+
+(test oversized-static-shared-arrays-are-refused-before-compiling
+  (let* ((device (make-instance 'mock-device :limit 128))
+         (gpu:*device* device))
+    (define-tiled-kernel "tiled-b")
+    (signals gpu:gpu-error (funcall (kernel-function "tiled-b") (gpu:make-gpu-array 1) 0 :grid 1))
+    (is (null (prepared device)))
+    (is (null (launches device)))))
+
+(test devices-without-a-limit-are-not-checked
+  (with-mock-device (device)
+    (define-tiled-kernel "tiled-c")
+    (funcall (kernel-function "tiled-c") (gpu:make-gpu-array 1) 1000000 :grid 1)
     (is (= 1 (length (launches device))))))
 
 ;;; Compile-time behaviour

@@ -40,6 +40,10 @@ unsigned long clgpu_device_max_threads(void *device) {
     return size.width;
 }
 
+unsigned long clgpu_device_max_threadgroup_memory(void *device) {
+    return [(id<MTLDevice>)device maxThreadgroupMemoryLength];
+}
+
 void *clgpu_queue_new(void *device) {
     return (void *)[(id<MTLDevice>)device newCommandQueue];
 }

@@ -3,6 +3,9 @@
 (defmethod gpu:device-target ((device metal-device))
   :metal)
 
+(defmethod gpu:device-shared-memory-limit ((device metal-device))
+  (device-max-threadgroup-memory device))
+
 (defmethod gpu:device-allocate ((device metal-device) bytes)
   (make-buffer device bytes))
 
@@ -24,6 +27,7 @@
   (ecase (first argument)
     (:buffer (second argument))
     (:bytes argument)
+    ;; TODO: round up to 16 bytes, which Metal requires (#25)
     (:shared (list :threadgroup (second argument)))))
 
 (defmethod gpu:device-launch ((device metal-device) pipeline arguments grid group wait)

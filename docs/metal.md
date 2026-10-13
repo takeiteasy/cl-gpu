@@ -24,7 +24,7 @@
 
 | Function | Result |
 |---|---|
-| `(default-device)` | the system GPU; `device-name`, `device-max-threads` |
+| `(default-device)` | the system GPU; `device-name`, `device-max-threads`, `device-max-threadgroup-memory` (bytes) |
 | `(make-buffer device bytes)` | a zeroed buffer the host and GPU share[^1] |
 | `(copy-to-buffer buffer sequence &key element-type)` | stores numbers from the buffer's start; `element-type` is a scalar or vector type, default `f32` |
 | `(copy-from-buffer buffer sequence &key element-type)` | fills `sequence` from the buffer's start |

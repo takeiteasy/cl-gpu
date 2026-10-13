@@ -18,6 +18,8 @@
 (defshim ("clgpu_device_default" %device-default) :pointer)
 (defshim ("clgpu_device_name" %device-name) :pointer (device :pointer))
 (defshim ("clgpu_device_max_threads" %device-max-threads) :unsigned-long (device :pointer))
+(defshim ("clgpu_device_max_threadgroup_memory" %device-max-threadgroup-memory) :unsigned-long
+  (device :pointer))
 (defshim ("clgpu_queue_new" %queue-new) :pointer (device :pointer))
 
 (defshim ("clgpu_buffer_new" %buffer-new) :pointer (device :pointer) (length :unsigned-long))

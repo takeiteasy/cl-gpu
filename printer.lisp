@@ -403,6 +403,15 @@
 (defun shared-array-p (array)
   (eq :shared (pointer-type-space (ir-variable-type (ir-array-variable array)))))
 
+(defun shared-arrays (kernel)
+  (let ((found '()))
+    (dolist (statement (ir-kernel-body kernel))
+      (map-ir (lambda (node)
+                (when (and (ir-array-p node) (shared-array-p node))
+                  (push node found)))
+              statement))
+    (nreverse found)))
+
 (defmethod print-statement ((printer c-printer) (statement ir-array))
   (let ((variable (ir-array-variable statement)))
     (unless (shared-array-p statement)

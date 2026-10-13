@@ -1,13 +1,21 @@
 (in-package #:cl-gpu)
 
-(defstruct (gpu-kernel (:constructor %make-gpu-kernel (name ir)))
+(defstruct (gpu-kernel (:constructor %make-gpu-kernel (name ir shared-bytes)))
   name
   ir
+  shared-bytes
   ;; TODO: entries of released devices stay (#18)
   (pipelines (make-hash-table :test 'eq :synchronized t)))
 
+(defun static-shared-bytes (ir)
+  "Bytes of the shared arrays of IR, not counting alignment."
+  (loop for array in (shared-arrays ir)
+        sum (* (ir-array-size array)
+               (pointee-bytes (pointer-type-pointee (ir-variable-type (ir-array-variable array)))))))
+
 (defun make-gpu-kernel (name arguments form)
-  (%make-gpu-kernel name (lower-kernel form :name name :arguments arguments)))
+  (let ((ir (lower-kernel form :name name :arguments arguments)))
+    (%make-gpu-kernel name ir (static-shared-bytes ir))))
 
 (defun find-kernel (name)
   "The kernel that `define-kernel` bound to NAME, or NIL."
@@ -105,6 +113,15 @@ so type errors are reported when the definition is compiled."
         (setf (gethash device (gpu-kernel-pipelines kernel))
               (device-prepare device (kernel-source ir target) (kernel-entry-name ir target))))))
 
+(defun check-shared-memory (kernel arguments device)
+  (let ((limit (device-shared-memory-limit device))
+        (needed (+ (gpu-kernel-shared-bytes kernel)
+                   (loop for argument in arguments
+                         when (eq (first argument) :shared) sum (second argument)))))
+    (when (and limit (> needed limit))
+      (gpu-fail "~(~a~): needs ~d bytes of shared memory, the device allows ~d"
+                (gpu-kernel-name kernel) needed limit))))
+
 (defun launch (kernel arguments &key grid group (wait t) device)
   "Run KERNEL on ARGUMENTS over GRID threads. Return NIL, or with WAIT NIL the command to pass to WAIT."
   (unless grid
@@ -115,7 +132,8 @@ so type errors are reported when the definition is compiled."
          (group (and group (grid-dimensions kernel :group group)))
          (converted (loop for parameter in parameters
                           for value in arguments
-                          collect (launch-argument kernel parameter value device)))
-         (command (device-launch device (prepared-kernel kernel device) converted grid group wait)))
-    (unless wait
-      command)))
+                          collect (launch-argument kernel parameter value device))))
+    (check-shared-memory kernel converted device)
+    (let ((command (device-launch device (prepared-kernel kernel device) converted grid group wait)))
+      (unless wait
+        command))))

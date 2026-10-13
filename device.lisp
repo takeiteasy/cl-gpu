@@ -5,6 +5,12 @@
 (defgeneric device-target (device)
   (:documentation "The printer target keyword whose source DEVICE compiles."))
 
+(defgeneric device-shared-memory-limit (device)
+  (:documentation "Bytes of group-shared memory a kernel may use on DEVICE, or NIL if unchecked.")
+  (:method (device)
+    (declare (ignore device))
+    nil))
+
 (defgeneric device-allocate (device bytes)
   (:documentation "A zeroed backend buffer of BYTES bytes."))
 

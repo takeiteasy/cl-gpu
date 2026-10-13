@@ -70,6 +70,9 @@
 (defun device-max-threads (device)
   (%device-max-threads (live-handle device)))
 
+(defun device-max-threadgroup-memory (device)
+  (%device-max-threadgroup-memory (live-handle device)))
+
 (defmethod release ((device metal-device))
   (when (handle device)
     (%release (device-queue device))

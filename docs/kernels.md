@@ -76,7 +76,7 @@ An array not freed is released when it is garbage collected. Use `free` for larg
 
 ## Errors
 
-`gpu-error` covers a bad launch (missing `:grid`, wrong argument type, an array from another device or already freed, an element type that differs from the pointer's) and backend failures; `metal-error` is a subclass. `kernel-type-error` is signalled when the definition is compiled.
+`gpu-error` covers a bad launch (missing `:grid`, wrong argument type, an array from another device or already freed, an element type that differs from the pointer's, shared memory over the [device limit](arrays.md#shared-memory)) and backend failures; `metal-error` is a subclass. `kernel-type-error` is signalled when the definition is compiled.
 
 ## Limitations
 
@@ -85,7 +85,7 @@ An array not freed is released when it is garbage collected. Use `free` for larg
 
 ## Backends
 
-A backend implements `device-target`, `device-allocate`, `device-free`, `device-store`, `device-load`, `device-prepare` and `device-launch` for its device class and calls `register-backend`.[^2]
+A backend implements `device-target`, `device-allocate`, `device-free`, `device-store`, `device-load`, `device-prepare` and `device-launch` for its device class and calls `register-backend`.[^2] It may also implement `device-shared-memory-limit`, the bytes of shared memory a kernel may use; `nil`, the default, skips the check.
 
 [^1]: The cache is per kernel and per device. `device-prepare` receives the source and the entry function name and returns whatever `device-launch` runs.
 [^2]: `device-launch` receives its arguments as `(:buffer b)`, `(:bytes type value)` or `(:shared bytes)` in parameter order, the grid and group as lists of three, and returns the backend's command.

@@ -400,3 +400,29 @@ kernel void present() {}")
                            (gpu:from-device out)))))))
     (check "double-vec4" '(gpu:vec gpu:f32 4) '(#(1.0 2.0 3.0 4.0) #(5.0 6.0 7.0 8.0)))
     (check "double-vec3" '(gpu:vec gpu:i32 3) '(#(1 2 3) #(4 5 6) #(7 8 9)))))
+
+;;; Threadgroup memory limit
+
+(test the-device-reports-a-threadgroup-memory-limit
+  (is (plusp (metal:device-max-threadgroup-memory (metal:default-device))))
+  (is (= (metal:device-max-threadgroup-memory (metal:default-device))
+         (gpu:device-shared-memory-limit (metal:default-device)))))
+
+(test oversized-shared-memory-is-a-gpu-error
+  (eval-kernel "(define-kernel huge-static ((out (ptr f32 :global)))
+                  (let ((tile (shared-array f32 100000)))
+                    (setf (aref tile 0) 1.0)
+                    (barrier)
+                    (setf (aref out 0) (aref tile 0))))")
+  (eval-kernel "(define-kernel huge-parameter ((out (ptr f32 :global)) (tile (ptr f32 :shared)))
+                  (setf (aref tile 0) 1.0)
+                  (barrier)
+                  (setf (aref out 0) (aref tile 0)))")
+  (gpu:with-gpu-array (out (gpu:make-gpu-array 1))
+    (let ((message (handler-case (funcall (kernel-function "huge-static") out :grid 1)
+                     (gpu:gpu-error (condition) (gpu:gpu-error-message condition)))))
+      (is (search "huge-static" message))
+      (is (search "400000" message)))
+    (signals gpu:gpu-error (funcall (kernel-function "huge-parameter") out 100000 :grid 1))
+    (funcall (kernel-function "huge-parameter") out 16 :grid 1)
+    (is (equalp #(1.0) (gpu:from-device out)))))

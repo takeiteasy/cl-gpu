@@ -26,7 +26,7 @@ A kernel declares fixed-size arrays with `shared-array` and `local-array`. Each 
 - Shared arrays are static, so a launch does not size them. A `(ptr T :shared)` kernel parameter is still sized at launch.
 - A shared array declared inside a branch or loop is one array for the group, not one per iteration.
 - `:zero` clears a shared array before the body runs, and the whole group waits at one barrier.[^1] Threads that leave early with `return` still take part.
-- Metal limits the threadgroup memory of a kernel, and the sum of all shared arrays and parameters counts toward it.
+- A device limits the shared memory of a kernel, and the sum of all shared arrays and parameters counts toward it. A launch over the limit signals `gpu-error` naming the kernel, the bytes needed and the limit.[^2]
 
 ```lisp
 (let ((hist (shared-array (atomic u32) 4 :zero)))
@@ -39,3 +39,4 @@ A kernel declares fixed-size arrays with `shared-array` and `local-array`. Each 
 A local array is declared where the form appears. `:zero` prints `= {}`. Indexing with a runtime index may spill the array to slow memory.
 
 [^1]: Metal needs threadgroup storage at kernel scope, so the printer declares every shared array at the top of the kernel and clears the `:zero` ones there. The clear uses `thread_index_in_threadgroup` and `threads_per_threadgroup`, added as kernel parameters.
+[^2]: The check ignores alignment padding, so the device compiler may still refuse a kernel just under the limit.
