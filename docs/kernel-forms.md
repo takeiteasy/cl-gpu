@@ -34,6 +34,7 @@ Kernels are Lisp forms. `read-kernel` reads text into forms that carry source lo
 | `(for (v init [test [step]]) body)` | C-style loop |
 | `(while test body)` | |
 | `(macrolet ((name lambda-list body)) form ...)` | local kernel macros |
+| `(flet ((name (param ...) body)) form ...)`, `(labels ...)` | local functions, inlined at each call.[^1] `labels` functions see each other. `(return-from name value)` leaves the function |
 | `(symbol-macrolet ((name expansion)) form ...)` | `setf` works through them |
 | `(f arg ...)` | a call. Lowering resolves operators and [intrinsics](intrinsics.md) |
 | `(declare (type T v ...))` | leading form of `let`, `let*`, `for`, `while`; sets the [type](types.md) of variables |
@@ -84,5 +85,8 @@ Both carry a message, the form and a `source-location` (file, line and column, 1
 
 ## Limitations
 
-- Standard CL forms not listed above are errors, including `loop`, `do`, `tagbody`, `go`, `function`, `flet` and `labels`.
+- Standard CL forms not listed above are errors, including `loop`, `do`, `tagbody`, `go` and `function`.
 - Other CL macros are errors. Define a kernel macro instead.
+- A local function takes required parameters only (no `&optional`, `&key` or `&rest`), cannot recurse (directly or through `labels` siblings) and cannot `return-from` a block outside itself.
+
+[^1]: Each call expands to a `let` of the parameters around the body, so every call infers its own types, and the body can read and assign captured variables and use thread positions. Bodies are walked per call: errors in an unused function are not reported. Local functions and `macrolet` macros share one namespace; the innermost definition wins.

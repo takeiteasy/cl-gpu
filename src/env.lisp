@@ -15,21 +15,25 @@
                  ,@body))))))
 
 ;;; Each namespace is an alist from name to entry, searched innermost first.
-;;; Variable entries are a BINDING or a (:symbol-macro . expansion-cst).
+;;; Variable entries are a BINDING or a (:symbol-macro . expansion-cst). Operator entries
+;;; are a macro expander or a LOCAL-FUNCTION; macrolet, flet and labels share the namespace.
+;;; A BARRIER scope hides the blocks outside it, so a local function cannot return from them.
 (defstruct (env (:constructor make-env (&optional parent)))
-  parent variables macros blocks)
+  parent variables operators blocks barrier)
 
 (defun env-lookup (env namespace name)
   (loop for scope = env then (env-parent scope)
         while scope
         do (let ((entry (assoc name (ecase namespace
                                       (:variable (env-variables scope))
-                                      (:macro (env-macros scope))
+                                      (:operator (env-operators scope))
                                       (:block (env-blocks scope))))))
-             (when entry (return (cdr entry))))))
+             (when entry (return (cdr entry)))
+             (when (and (eq namespace :block) (env-barrier scope))
+               (return nil)))))
 
 (defun env-bind (env namespace name entry)
   (ecase namespace
     (:variable (push (cons name entry) (env-variables env)))
-    (:macro (push (cons name entry) (env-macros env)))
+    (:operator (push (cons name entry) (env-operators env)))
     (:block (push (cons name entry) (env-blocks env)))))

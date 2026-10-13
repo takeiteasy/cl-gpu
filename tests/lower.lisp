@@ -263,6 +263,42 @@
 (test incf-needs-a-numeric-place
   (signals gpu:kernel-type-error (lower-text "(let ((b t)) (incf b))")))
 
+(test flet-call-in-value-and-statement-position
+  (let ((kernel (lower-text "(flet ((sq (x) (* x x)))
+                               (setf (aref p 0) (sq (aref p 1)))
+                               (sq 3))"
+                            :arguments "((p (ptr i32 :global)))")))
+    (is (typep kernel 'gpu:ir-kernel))
+    (is (= 1 (length (ir-nodes-of-type 'gpu:ir-assign kernel))))))
+
+(test flet-calls-infer-their-own-types
+  (let ((kernel (lower-text "(flet ((twice (x) (* x 2)))
+                               (setf (aref a 0) (twice (aref a 1)))
+                               (setf (aref b 0) (twice (aref b 1))))"
+                            :arguments "((a (ptr i32 :global)) (b (ptr f32 :global)))")))
+    (is (equal (list (i32) (f32))
+               (mapcar #'gpu:ir-expr-type
+                       (mapcar #'gpu:ir-assign-value (ir-nodes-of-type 'gpu:ir-assign kernel)))))))
+
+(test local-function-may-use-thread-positions-and-captures
+  (let ((kernel (lower-text "(let ((base 10))
+                               (declare (type u32 base))
+                               (labels ((cell () (+ base (global-id 0)))
+                                        (store (v) (declare (type u32 v)) (setf (aref p (cell)) v)))
+                                 (store 1)))"
+                            :arguments "((p (ptr u32 :global)))")))
+    (is (= 1 (length (ir-nodes-of-type 'gpu:ir-intrinsic kernel))))))
+
+(test local-function-return-leaves-only-the-function
+  (let ((kernel (lower-text "(flet ((f (x) (when (> x 2) (return-from f 1)) 2))
+                               (setf (aref p 0) (f (aref p 1))))
+                             (setf (aref p 2) 3)"
+                            :arguments "((p (ptr i32 :global)))")))
+    (is (null (ir-nodes-of-type 'gpu:ir-return kernel)))))
+
+(test unknown-function-outside-flet-is-a-type-error
+  (signals gpu:kernel-type-error (lower-text "(flet ((f (x) (g x)) (g (x) x)) (f 1))")))
+
 (test value-statements-have-no-value
   (signals gpu:kernel-type-error (lower-text "(let ((r (while t (barrier)))) r)"))
   (signals gpu:kernel-type-error (lower-text "(let ((r (progn))) r)"))

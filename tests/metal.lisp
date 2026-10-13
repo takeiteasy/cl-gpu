@@ -186,6 +186,16 @@ kernel void present() {}")
         (is (every #'close-p (filled 1000 (lambda (i) (+ (* 3.0 i) 2.0)))
                    (gpu:from-device out)))))))
 
+(test define-kernel-runs-local-functions
+  (eval-kernel "(define-kernel local-functions ((out (ptr u32 :global)) (k u32))
+                  (symbol-macrolet ((cell (aref out (global-id 0))))
+                    (flet ((scale (x) (* x k)))
+                      (setf cell (scale (global-id 0)))
+                      (incf cell 1))))")
+  (gpu:with-gpu-array (out (gpu:make-gpu-array 8 :element-type 'gpu:u32))
+    (funcall (kernel-function "local-functions") out 3 :grid 8)
+    (is (equalp (filled 8 (lambda (i) (1+ (* 3 i)))) (gpu:from-device out)))))
+
 (test define-kernel-launches-asynchronously
   (eval-kernel "(define-kernel fill-five ((out (ptr u32 :global)))
                   (setf (aref out (global-id 0)) 5))")

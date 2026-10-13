@@ -184,7 +184,7 @@
   (is (equal '(2 3) (error-position-of gpu:kernel-syntax-error
                       (walk-text (format nil "(progn~%  (loop for i below 3 do (foo)))")))))
   (is (equal '(2 3) (error-position-of gpu:kernel-syntax-error
-                      (walk-text (format nil "(progn~%  (flet ((f ())) (f)))")))))
+                      (walk-text (format nil "(progn~%  (go x))")))))
   (is (equal '(1 1) (error-position-of gpu:kernel-syntax-error
                       (walk-text "(tagbody)")))))
 
@@ -213,3 +213,67 @@
                  (gpu:walk-kernel cst :variables '())
                  (gpu:walk-kernel (cst:cst-from-expression '(loop)
                                                            :source (cst:source cst))))))))
+
+;;; flet and labels
+
+(test flet-call-inlines-to-a-let
+  (let ((node (walk-text "(flet ((twice (x) (* x 2))) (twice 3))")))
+    (is (typep node 'gpu:let-node))
+    (is (equal (list (ksym "x")) (mapcar #'gpu:binding-name (gpu:let-node-bindings node))))
+    (is (typep (first (gpu:let-node-body node)) 'gpu:call))))
+
+(test flet-calls-get-separate-bindings
+  (let* ((node (walk-text "(flet ((id (x) x)) (progn (id 1) (id 2)))"))
+         (lets (nodes-of-type 'gpu:let-node node)))
+    (is (= 2 (length lets)))
+    (is (not (eq (first (gpu:let-node-bindings (first lets)))
+                 (first (gpu:let-node-bindings (second lets))))))))
+
+(test local-functions-capture-variables
+  (let* ((node (walk-text "(let ((a 1)) (flet ((f () a)) (f)))"))
+         (outer (first (gpu:let-node-bindings node)))
+         (ref (first (nodes-of-type 'gpu:var-ref (first (gpu:let-node-body node))))))
+    (is (eq outer (gpu:var-ref-binding ref)))))
+
+(test flet-does-not-see-itself-but-labels-does
+  (let ((flet-node (walk-text "(flet ((f (x) (g x)) (g (x) x)) (f 1))"))
+        (labels-node (walk-text "(labels ((f (x) (g x)) (g (x) x)) (f 1))")))
+    (is (find (ksym "g") (nodes-of-type 'gpu:call flet-node) :key #'gpu:call-operator))
+    (is (null (find (ksym "g") (nodes-of-type 'gpu:call labels-node) :key #'gpu:call-operator)))))
+
+(test local-function-recursion-is-an-error
+  (is (equal '(1 17) (error-position-of gpu:kernel-syntax-error
+                       (walk-text "(labels ((f (x) (f x))) (f 1))"))))
+  (signals gpu:kernel-syntax-error
+    (walk-text "(labels ((f (x) (g x)) (g (x) (f x))) (f 1))")))
+
+(test local-function-argument-count-is-checked
+  (signals gpu:kernel-syntax-error (walk-text "(flet ((f (x) x)) (f))"))
+  (signals gpu:kernel-syntax-error (walk-text "(flet ((f (x) x)) (f 1 2))")))
+
+(test local-function-return-from-leaves-the-function
+  (let* ((node (walk-text "(flet ((f (x) (return-from f x) 0)) (f 1))"))
+         (block (first (nodes-of-type 'gpu:block-node node))))
+    (is (eq (ksym "f") (gpu:block-node-name block)))
+    (is (typep (first (nodes-of-type 'gpu:return-node node)) 'gpu:return-node))))
+
+(test local-function-cannot-return-from-outer-blocks
+  (signals gpu:kernel-syntax-error
+    (walk-text "(block out (flet ((f () (return-from out 1))) (f)))"))
+  (signals gpu:kernel-syntax-error
+    (walk-text "(dotimes (i 3) (flet ((f () (return))) (f)))")))
+
+(test macrolet-and-flet-shadow-each-other
+  (is (typep (walk-text "(macrolet ((f () 1)) (flet ((f () 2)) (f)))") 'gpu:literal))
+  (let ((node (walk-text "(flet ((f () 2)) (macrolet ((f () 1)) (f)))")))
+    (is (eql 1 (gpu:literal-value node)))))
+
+(test bad-local-function-definitions-are-errors
+  (signals gpu:kernel-syntax-error (walk-text "(flet ((f (&optional x) x)) (f))"))
+  (signals gpu:kernel-syntax-error (walk-text "(flet ((f (x x) x)) (f 1 2))"))
+  (signals gpu:kernel-syntax-error (walk-text "(flet ((car (x) x)) (car 1))"))
+  (signals gpu:kernel-syntax-error (walk-text "(flet ((f)) (f))"))
+  (signals gpu:kernel-syntax-error (walk-text "(flet ((f (1) 1)) (f 1))")))
+
+(test local-function-is-not-a-place
+  (signals gpu:kernel-syntax-error (walk-text "(flet ((f () 1)) (setf (f) 2))")))

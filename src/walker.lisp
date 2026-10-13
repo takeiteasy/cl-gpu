@@ -75,9 +75,13 @@
 (defun walk-all (csts env)
   (loop for cst in csts collect (walk cst env)))
 
+(defstruct local-function
+  name parameters declarations body env active)
+
 (defun operator-kind (head env)
-  "Classify the operator HEAD as :local-macro, :special, :macro, :unsupported or :call."
-  (cond ((env-lookup env :macro head) :local-macro)
+  "Classify the operator HEAD as :local-function, :local-macro, :special, :macro, :unsupported or :call."
+  (cond ((local-function-p (env-lookup env :operator head)) :local-function)
+        ((env-lookup env :operator head) :local-macro)
         ((gethash head *walkers*) :special)
         ((gethash head *kernel-macros*) :macro)
         ((and (eq (symbol-package head) (find-package '#:common-lisp))
@@ -125,9 +129,12 @@
     (let* ((head (car raw))
            (args (cst:listify (cst:rest cst))))
       (ecase (operator-kind head env)
+        (:local-function
+         (with-expansion (cst)
+           (inline-call cst env (env-lookup env :operator head) args)))
         (:local-macro
          (with-expansion (cst)
-           (walk (expand-macro-call cst (env-lookup env :macro head)) env)))
+           (walk (expand-macro-call cst (env-lookup env :operator head)) env)))
         (:macro
          (with-expansion (cst)
            (walk (expand-macro-call cst (gethash head *kernel-macros*)) env)))
@@ -152,7 +159,7 @@
              (case (operator-kind head env)
                (:local-macro
                 (with-expansion (cst)
-                  (walk-place (expand-macro-call cst (env-lookup env :macro head))
+                  (walk-place (expand-macro-call cst (env-lookup env :operator head))
                               env)))
                (:macro
                 (with-expansion (cst)
@@ -319,11 +326,87 @@
       (let ((parts (cst-list definition "macro definition")))
         (unless (and (>= (length parts) 2) (symbolp (cst:raw (first parts))))
           (walk-error definition "malformed macro definition ~s" (cst:raw definition)))
-        (env-bind inner :macro (cst:raw (first parts))
+        (env-bind inner :operator (cst:raw (first parts))
                   (compile-local-macro definition
                                        (cst:raw (second parts))
                                        (mapcar #'cst:raw (cddr parts))))))
     (body-node (walk-all (rest args) inner))))
+
+;;; Local functions are inlined at each call, so every call infers its own types.
+(defun parse-local-function (definition env)
+  (let ((parts (cst-list definition "function definition")))
+    (unless (and (>= (length parts) 2) (symbolp (cst:raw (first parts))))
+      (walk-error definition "malformed function definition ~s" (cst:raw definition)))
+    (let ((name (cst:raw (first parts))))
+      (when (or (not (variable-name-p name))
+                (eq (symbol-package name) (find-package '#:common-lisp)))
+        (walk-error (first parts) "~s cannot be used as a function name" name))
+      (let ((parameters (cst-list (second parts) "parameter list")))
+        (dolist (parameter parameters)
+          (check-variable-name parameter)
+          (when (char= (char (symbol-name (cst:raw parameter)) 0) #\&)
+            (walk-error parameter "lambda list keyword ~s is not supported"
+                        (cst:raw parameter))))
+        (when (/= (length parameters)
+                  (length (remove-duplicates parameters :key #'cst:raw)))
+          (walk-error (second parts) "duplicate parameter in ~s" (cst:raw (second parts))))
+        (multiple-value-bind (declarations body) (parse-body (cddr parts))
+          (make-local-function :name name :parameters parameters
+                               :declarations declarations :body body :env env))))))
+
+(defun walk-local-functions (cst env args recursive)
+  "Walk flet (or labels, when RECURSIVE) CST. Definitions see ENV, or the new scope for labels."
+  (check-arg-count cst args 1 nil)
+  (let ((inner (make-env env)))
+    (dolist (definition (cst-list (first args) "function definitions"))
+      (let ((function (parse-local-function definition (if recursive inner env))))
+        (env-bind inner :operator (local-function-name function) function)))
+    (body-node (walk-all (rest args) inner))))
+
+(define-walker flet (cst env args)
+  (walk-local-functions cst env args nil))
+
+(define-walker labels (cst env args)
+  (walk-local-functions cst env args t))
+
+(defun returns-to-p (block node)
+  (let ((found nil))
+    (map-nodes (lambda (child)
+                 (when (and (return-node-p child) (eq (return-node-block child) block))
+                   (setf found t)))
+               node)
+    found))
+
+(defun inline-call (cst env function args)
+  "The AST of calling FUNCTION with ARGS: a let of the parameters around its body."
+  (let ((parameters (local-function-parameters function))
+        (name (local-function-name function)))
+    (unless (= (length args) (length parameters))
+      (walk-error cst "wrong number of arguments to ~(~a~): expected ~d, got ~d"
+                  name (length parameters) (length args)))
+    (when (local-function-active function)
+      (walk-error cst "recursive call to ~(~a~): kernels cannot recurse" name))
+    (let* ((inits (walk-all args env))
+           (bindings (mapcar #'new-binding parameters))
+           (scope (make-env (local-function-env function)))
+           (block (make-block-node :name name :source *current-source*))
+           (block-env (make-env scope)))
+      (setf (env-barrier scope) t)
+      (loop for binding in bindings
+            do (env-bind scope :variable (binding-name binding) binding))
+      (env-bind block-env :block name block)
+      (setf (local-function-active function) t)
+      (unwind-protect
+           (setf (block-node-body block) (walk-all (local-function-body function) block-env))
+        (setf (local-function-active function) nil))
+      (let ((body (if (returns-to-p block block)
+                      block
+                      (body-node (block-node-body block)))))
+        (if bindings
+            (make-let-node :sequential nil :bindings bindings :inits inits
+                           :declarations (local-function-declarations function)
+                           :body (list body) :source *current-source*)
+            body)))))
 
 (define-walker symbol-macrolet (cst env args)
   (check-arg-count cst args 1 nil)

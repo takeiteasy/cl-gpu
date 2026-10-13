@@ -122,6 +122,15 @@
         (setf (aref out 1) (bitcast i32 x))
         (setf (aref w 0) (convert (vec i32 4) v)))"
      "((x f32) (out (ptr i32 :global)) (w (ptr (vec i32 4) :global)))")
+    ("local-functions"
+     "(symbol-macrolet ((cell (aref out (global-id 0))))
+        (labels ((clamp (x) (if (> x hi) hi x))
+                 (bump (x) (incf cell (clamp x))))
+          (bump (aref in 0))
+          (when (> (aref in 1) 0)
+            (return))
+          (decf cell 1)))"
+     "((out (ptr i32 :global)) (in (ptr i32 :global)) (hi i32))")
     ("nested-loops"
      "(block search
         (dotimes (i 4)
