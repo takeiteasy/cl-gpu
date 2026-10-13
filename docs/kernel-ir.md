@@ -1,6 +1,6 @@
 # Kernel IR
 
-`lower-kernel` turns a kernel form into typed, C-like IR. A printer writes the IR out for one target.
+`lower-kernel` turns a kernel form into typed, C-like IR. A [printer](printers.md) writes the IR out for one target.
 
 ```lisp
 (cl-gpu:lower-kernel

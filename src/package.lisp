@@ -35,6 +35,7 @@
    ;; Lowering
    #:lower-kernel
    #:kernel-type-error
+   #:kernel-target-error
    #:map-ir
    #:ir-variable #:ir-variable-name #:ir-variable-type #:ir-variable-id #:ir-variable-temp
    #:ir-kernel #:ir-kernel-name #:ir-kernel-parameters #:ir-kernel-body #:ir-kernel-scalar-types
@@ -55,6 +56,8 @@
    #:ir-while #:ir-while-test #:ir-while-body
    #:ir-break #:ir-return
    #:ir-expr-stmt #:ir-expr-stmt-expr
+   ;; Printing
+   #:kernel-source #:print-kernel #:c-printer #:msl-printer
    ;; Conditions
    #:source-location
    #:source-location-file

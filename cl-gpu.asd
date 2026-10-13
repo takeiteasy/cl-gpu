@@ -19,7 +19,9 @@
                              (:file "macros")
                              (:file "ir")
                              (:file "intrinsics")
-                             (:file "lower"))))
+                             (:file "lower")
+                             (:file "printer")
+                             (:file "msl"))))
   :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/tests"))))
 
 (asdf:defsystem "cl-gpu/tests"
@@ -31,7 +33,9 @@
                (:file "tests/walker")
                (:file "tests/types")
                (:file "tests/intrinsics")
-               (:file "tests/lower"))
+               (:file "tests/lower")
+               (:file "tests/printer")
+               (:file "tests/msl"))
   :perform (asdf:test-op (op component)
              (declare (ignore op component))
              (unless (uiop:symbol-call :cl-gpu/tests :run-tests)

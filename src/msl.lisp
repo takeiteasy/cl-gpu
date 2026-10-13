@@ -1,0 +1,137 @@
+(in-package #:cl-gpu)
+
+;;; Metal Shading Language. Every parameter is bound by position: pointers and
+;;; scalars take the next [[buffer(i)]], and :shared pointers take the next
+;;; [[threadgroup(k)]]. Thread positions are extra uint3 parameters.
+
+(defclass msl-printer (c-printer)
+  ((positions :initform '() :accessor printer-positions)
+   (copies :initform '() :accessor printer-copies)))
+
+(defmethod printer-target ((printer msl-printer)) :metal)
+
+(defparameter *msl-reserved-words*
+  '("alignas" "alignof" "and" "asm" "auto" "bool" "break" "case" "catch" "char" "class"
+    "const" "constant" "constexpr" "continue" "default" "delete" "device" "do" "double"
+    "else" "enum" "explicit" "extern" "false" "float" "for" "fragment" "friend" "goto"
+    "half" "bfloat" "if" "inline" "int" "kernel" "long" "main" "mutable" "namespace"
+    "new" "nullptr" "operator" "or" "private" "protected" "public" "register" "return"
+    "short" "signed" "sizeof" "static" "struct" "switch" "template" "this" "thread"
+    "threadgroup" "throw" "true" "try" "typedef" "typename" "uchar" "uint" "ulong"
+    "union" "unsigned" "ushort" "using" "vertex" "virtual" "void" "volatile" "while"
+    "atomic_int" "atomic_uint" "metal" "as_type" "static_cast"))
+
+(defmethod reserved-words ((printer msl-printer))
+  (append *msl-reserved-words*
+          (loop for base in '("float" "half" "bfloat" "int" "uint" "char" "uchar"
+                              "short" "ushort" "long" "ulong" "bool")
+                append (loop for n from 2 to 4 collect (format nil "~a~d" base n)))))
+
+(defmethod scalar-text ((printer msl-printer) type)
+  (ecase (scalar-type-name type)
+    (f16 "half") (bf16 "bfloat") (f32 "float")
+    (i8 "char") (i16 "short") (i32 "int") (i64 "long")
+    (u8 "uchar") (u16 "ushort") (u32 "uint") (u64 "ulong")
+    (bool "bool")))
+
+(defmethod atomic-text ((printer msl-printer) type)
+  (if (eq (atomic-type-element type) (scalar 'i32)) "atomic_int" "atomic_uint"))
+
+(defmethod space-text ((printer msl-printer) space)
+  (ecase space
+    (:global "device") (:shared "threadgroup") (:constant "constant") (:private "thread")))
+
+(defmethod cast-text ((printer msl-printer) type operand)
+  (format nil "static_cast<~a>(~a)" (type-text printer type) operand))
+
+(defmethod bitcast-text ((printer msl-printer) type operand)
+  (format nil "as_type<~a>(~a)" (type-text printer type) operand))
+
+(defmethod parameter-text ((printer msl-printer) attribute axis)
+  (pushnew attribute (printer-positions printer) :test #'string=)
+  (format nil "cl_gpu_~a.~a" attribute (char "xyz" axis)))
+
+;;; Metal's compare-exchange writes the old value to its expected operand and may fail spuriously.
+(defun atomic-cas-helpers ()
+  (with-output-to-string (out)
+    (dolist (space '("device" "threadgroup"))
+      (loop for (atomic type) in '(("atomic_int" "int") ("atomic_uint" "uint"))
+            do (format out "inline ~a cl_gpu_atomic_cas(~a ~a* p, ~a expected, ~a desired) {
+    ~a seen = expected;
+    while (!atomic_compare_exchange_weak_explicit(p, &expected, desired, memory_order_relaxed, memory_order_relaxed)) {
+        if (expected != seen) return expected;
+    }
+    return seen;
+}
+"
+                       type space atomic type type type)))))
+
+(defmethod helper-definition ((printer msl-printer) name)
+  (if (string= name "cl_gpu_atomic_cas")
+      (atomic-cas-helpers)
+      (error "unknown helper ~a" name)))
+
+(defmethod print-prelude ((printer msl-printer) stream)
+  (format stream "#include <metal_stdlib>~%using namespace metal;~%~%")
+  (dolist (helper (sort (copy-list (printer-helpers printer)) #'string<))
+    (format stream "~a~%" (helper-definition printer helper))))
+
+;;; A scalar or vector parameter is a constant reference, so one that the kernel assigns
+;;; is copied into a local of its own name.
+(defun assigned-parameters (kernel)
+  (let ((found '()))
+    (dolist (statement (ir-kernel-body kernel))
+      (map-ir (lambda (node)
+                (when (ir-assign-p node)
+                  (let ((target (ir-assign-target node)))
+                    (loop while (ir-component-p target)
+                          do (setf target (ir-component-base target)))
+                    (when (ir-var-p target)
+                      (pushnew (ir-var-variable target) found)))))
+              statement))
+    (remove-if (lambda (parameter) (pointer-type-p (ir-variable-type parameter)))
+               (intersection found (ir-kernel-parameters kernel)))))
+
+(defmethod begin-kernel :after ((printer msl-printer) kernel)
+  (setf (printer-positions printer) '()
+        (printer-copies printer) (assigned-parameters kernel)))
+
+(defmethod print-prologue ((printer msl-printer) kernel)
+  (dolist (parameter (ir-kernel-parameters kernel))
+    (when (member parameter (printer-copies printer))
+      (let ((name (variable-name printer parameter)))
+        (emit-line printer "~a ~a = cl_gpu_~a;"
+                   (type-text printer (ir-variable-type parameter)) name name)))))
+
+(defun msl-parameters (printer kernel)
+  (let ((buffers -1)
+        (groups -1))
+    (loop for parameter in (ir-kernel-parameters kernel)
+          for type = (ir-variable-type parameter)
+          for name = (variable-name printer parameter)
+          collect (if (member parameter (printer-copies printer))
+                      (format nil "constant ~a& cl_gpu_~a [[buffer(~d)]]"
+                              (type-text printer type) name (incf buffers))
+                      (typecase type
+                        (pointer-type
+                         (ecase (pointer-type-space type)
+                           ((:global :constant)
+                            (format nil "~a ~a [[buffer(~d)]]"
+                                    (type-text printer type) name (incf buffers)))
+                           (:shared
+                            (format nil "~a ~a [[threadgroup(~d)]]"
+                                    (type-text printer type) name (incf groups)))
+                           (:private
+                            (target-fail "parameter ~(~a~) points to private memory"
+                                         (ir-variable-name parameter)))))
+                        (t (format nil "constant ~a& ~a [[buffer(~d)]]"
+                                   (type-text printer type) name (incf buffers))))))))
+
+(defmethod print-signature ((printer msl-printer) kernel stream)
+  (let ((parameters (append (msl-parameters printer kernel)
+                            (loop for attribute in (sort (copy-list (printer-positions printer))
+                                                         #'string<)
+                                  collect (format nil "uint3 cl_gpu_~a [[~a]]"
+                                                  attribute attribute)))))
+    (format stream "kernel void ~a(~{~%    ~a~^,~}) {~%"
+            (sanitised-kernel-name printer kernel) parameters)))

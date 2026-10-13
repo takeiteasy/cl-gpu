@@ -28,3 +28,5 @@
 (define-condition kernel-syntax-error (kernel-error) ())
 
 (define-condition kernel-type-error (kernel-error) ())
+
+(define-condition kernel-target-error (kernel-error) ())

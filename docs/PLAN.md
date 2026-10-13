@@ -22,7 +22,7 @@ The cl-webgpu shader DSL (a 3bgl-shaders fork) informs the inference tests but c
 | 0 | Skeleton | | Done |
 | 1 | Eclector reader and compute-subset walker | [#1](https://github.com/communal-software/cl-gpu/issues/1) | Done |
 | 2 | Type set and kernel IR | [#2](https://github.com/communal-software/cl-gpu/issues/2) | Done |
-| 3 | C-like printer base and MSL printer | [#3](https://github.com/communal-software/cl-gpu/issues/3) | Open |
+| 3 | C-like printer base and MSL printer | [#3](https://github.com/communal-software/cl-gpu/issues/3) | Done |
 | 4 | Metal runtime | [#4](https://github.com/communal-software/cl-gpu/issues/4) | Open |
 | 5 | `define-kernel` and buffer API | [#5](https://github.com/communal-software/cl-gpu/issues/5) | Open |
 | 6 | CUDA backend | [#6](https://github.com/communal-software/cl-gpu/issues/6) | Open |
@@ -30,7 +30,7 @@ The cl-webgpu shader DSL (a 3bgl-shaders fork) informs the inference tests but c
 
 ## Limitations
 
-No kernels compile to source yet: lowering produces IR that no printer consumes.
+Kernels print as Metal source but nothing runs them yet, and there are no CUDA or OpenCL printers.
 
 - No `loop`, `do`, `tagbody` or `go` ([kernel forms](kernel-forms.md)).
 - No `flet` or `labels` ([#8](https://github.com/communal-software/cl-gpu/issues/8)).
