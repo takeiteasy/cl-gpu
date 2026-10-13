@@ -2,7 +2,8 @@
   (:use #:cl #:cl-gpu)
   (:import-from #:cl-gpu #:gpu-fail)
   (:export #:saxpy #:sscal #:scopy #:sswap
-           #:sdot #:snrm2 #:sasum #:isamax
+           #:sdot #:snrm2 #:sasum #:isamax #:dsdot #:sdsdot
+           #:axpy #:scal #:copy #:swap #:dot #:nrm2 #:asum #:iamax
            #:make-matrix-view #:matrix-subview #:matrix-view-p
            #:matrix-view-data #:matrix-view-rows #:matrix-view-cols #:matrix-view-layout
            #:matrix-view-leading-dimension #:matrix-view-row-stride #:matrix-view-column-stride

@@ -775,3 +775,156 @@ a reversed view is compared with the reversed data in row-major order."
       (is (= 1 (gemv 3 0 1f0 0f0)))
       (is (= 1 (gemv 3 3 0f0 2f0)))
       (is (= 1 (gemv 3 3 1f0 0f0))))))
+
+;;; f16 and bf16: inputs are rounded through the element type first, so the oracle sees the same data
+
+(defparameter *half-types* '((gpu:f16 1f-3) (gpu:bf16 8f-3))
+  "(element type, relative tolerance for one rounding of a result)")
+
+(defun rounded (type vector)
+  "VECTOR after a round trip through the element TYPE."
+  (gpu:with-gpu-array (array (gpu:to-device vector :element-type type))
+    (map '(simple-array single-float (*)) (lambda (value) (float value 1f0)) (gpu:from-device array))))
+
+(defun close-within-p (tolerance a b)
+  (<= (abs (- a b)) (* tolerance (max 1 (abs a) (abs b)))))
+
+(defmacro with-half-pair ((x gx y gy type n inc offset) &body body)
+  "Bind X and Y to random vectors rounded to TYPE and GX and GY to device copies."
+  `(let ((,x (rounded ,type (random-vector (span-length ,n ,inc ,offset))))
+         (,y (rounded ,type (random-vector (span-length ,n 2 1)))))
+     (gpu:with-gpu-array (,gx (gpu:to-device ,x :element-type ,type))
+       (gpu:with-gpu-array (,gy (gpu:to-device ,y :element-type ,type))
+         ,@body))))
+
+(defmacro do-half-spans ((type tolerance n inc offset) &body body)
+  `(loop for (,type ,tolerance) in *half-types*
+         do (do-spans (,n ,inc ,offset) ,@body)))
+
+(defun device-values (array)
+  (map '(simple-array single-float (*)) (lambda (value) (float value 1f0)) (gpu:from-device array)))
+
+(test half-axpy-matches-the-oracle
+  (do-half-spans (type tolerance n inc offset)
+    (with-half-pair (x gx y gy type n inc offset)
+      (simd:saxpy n 2.5f0 x inc y 2 :x-offset offset :y-offset 1)
+      (is (eq gy (blas:axpy n 2.5f0 gx inc gy 2 :x-offset offset :y-offset 1)))
+      (is (every (lambda (a b) (close-within-p tolerance a b)) y (device-values gy))
+          "~a ~a" type message))))
+
+(test half-scal-matches-the-oracle
+  (do-half-spans (type tolerance n inc offset)
+    (with-half-pair (x gx y gy type n inc offset)
+      (simd:sscal n -1.5f0 x inc :x-offset offset)
+      (is (eq gx (blas:scal n -1.5f0 gx inc :x-offset offset)))
+      (is (every (lambda (a b) (close-within-p tolerance a b)) x (device-values gx))
+          "~a ~a" type message))))
+
+(test half-scal-by-zero-clears
+  (loop for (type nil) in *half-types*
+        do (gpu:with-gpu-array (gx (gpu:to-device #(1.0 2.0 3.0 4.0) :element-type type))
+             (blas:scal 3 0f0 gx 1)
+             (is (equalp #(0.0 0.0 0.0 4.0) (device-values gx))))))
+
+(test half-copy-and-swap-move-elements-exactly
+  (do-half-spans (type tolerance n inc offset)
+    (with-half-pair (x gx y gy type n inc offset)
+      (simd:scopy n x inc y 2 :x-offset offset :y-offset 1)
+      (blas:copy n gx inc gy 2 :x-offset offset :y-offset 1)
+      (is (equalp y (device-values gy)) "~a ~a" type message))
+    (with-half-pair (x gx y gy type n inc offset)
+      (simd:sswap n x inc y 2 :x-offset offset :y-offset 1)
+      (blas:swap n gx inc gy 2 :x-offset offset :y-offset 1)
+      (is (equalp x (device-values gx)) "~a ~a" type message)
+      (is (equalp y (device-values gy)) "~a ~a" type message))))
+
+(test half-reductions-match-the-oracle
+  (do-half-spans (type tolerance n inc offset)
+    (with-half-pair (x gx y gy type n inc offset)
+      (is (close-p (simd:sdot n x inc y 2 :x-offset offset :y-offset 1)
+                   (blas:dot n gx inc gy 2 :x-offset offset :y-offset 1))
+          "dot ~a ~a" type message)
+      (is (close-p (simd:sasum n x inc :x-offset offset) (blas:asum n gx inc :x-offset offset))
+          "asum ~a ~a" type message)
+      (is (close-p (simd:snrm2 n x inc :x-offset offset) (blas:nrm2 n gx inc :x-offset offset))
+          "nrm2 ~a ~a" type message)
+      (is (= (simd:isamax n x inc :x-offset offset) (blas:iamax n gx inc :x-offset offset))
+          "iamax ~a ~a" type message))))
+
+(test half-reductions-do-not-overflow-in-the-element-type
+  (gpu:with-gpu-array (gx (gpu:to-device (make-array 1000 :initial-element 60000.0)
+                                         :element-type 'gpu:f16))
+    (is (close-p (* 1000 60000f0) (blas:asum 1000 gx 1)))
+    (is (close-p (* 60000f0 (sqrt 1000f0)) (blas:nrm2 1000 gx 1)))))
+
+;;; Generic routines on f32 do what the s* routines do
+
+(test generic-routines-agree-with-the-f32-routines
+  (do-spans (n inc offset)
+    (with-pair (x gx y gy n inc offset)
+      (gpu:with-gpu-array (hx (gpu:to-device x))
+        (gpu:with-gpu-array (hy (gpu:to-device y))
+          (blas:axpy n 2.5f0 gx inc gy 2 :x-offset offset :y-offset 1)
+          (blas:saxpy n 2.5f0 hx inc hy 2 :x-offset offset :y-offset 1)
+          (is (equalp (gpu:from-device hy) (gpu:from-device gy)) message)
+          (is (= (blas:dot n gx inc gy 2 :x-offset offset :y-offset 1)
+                 (blas:sdot n hx inc hy 2 :x-offset offset :y-offset 1))
+              message)
+          (is (= (blas:nrm2 n gx inc :x-offset offset) (blas:snrm2 n hx inc :x-offset offset))
+              message)
+          (is (= (blas:iamax n gx inc :x-offset offset) (blas:isamax n hx inc :x-offset offset))
+              message))))))
+
+;;; Mixed precision
+
+(test dsdot-and-sdsdot-match-the-oracle
+  (do-spans (n inc offset)
+    (with-pair (x gx y gy n inc offset)
+      (let ((expected (simd:dsdot n x inc y 2 :x-offset offset :y-offset 1))
+            (actual (blas:dsdot n gx inc gy 2 :x-offset offset :y-offset 1)))
+        (is (typep actual 'double-float))
+        (is (<= (abs (- expected actual)) (* 1d-9 (max 1d0 (abs expected)))) message))
+      (is (close-p (simd:sdsdot n 0.5f0 x inc y 2 :x-offset offset :y-offset 1)
+                   (blas:sdsdot n 0.5f0 gx inc gy 2 :x-offset offset :y-offset 1))
+          message))))
+
+(test dsdot-keeps-what-f32-accumulation-loses
+  ;; With 65536 threads, indices 0, 65536 and 131072 are summed in order by one thread:
+  ;; in f32 1e8 + 1 - 1e8 is 0.
+  (let ((x (make-array 200000 :element-type 'single-float :initial-element 0f0))
+        (y (make-array 200000 :element-type 'single-float :initial-element 1f0)))
+    (setf (aref x 0) 1f8
+          (aref x 65536) 1f0
+          (aref x 131072) -1f8)
+    (gpu:with-gpu-array (gx (gpu:to-device x))
+      (gpu:with-gpu-array (gy (gpu:to-device y))
+        (is (= 1d0 (blas:dsdot 200000 gx 1 gy 1)))
+        (is (= 1f0 (blas:sdsdot 200000 0f0 gx 1 gy 1)))))))
+
+(test dsdot-of-nothing-is-zero
+  (gpu:with-gpu-array (gx (gpu:to-device #(1.0)))
+    (is (eql 0d0 (blas:dsdot 0 gx 1 gx 1)))
+    (is (eql 2f0 (blas:sdsdot 0 2f0 gx 1 gx 1)))))
+
+;;; Element types, without a GPU
+
+(test generic-routines-need-matching-supported-element-types
+  (let* ((device (make-instance 'mock-device))
+         (f32 (gpu:make-gpu-array 4 :device device))
+         (f16 (gpu:make-gpu-array 4 :device device :element-type 'gpu:f16))
+         (bf16 (gpu:make-gpu-array 4 :device device :element-type 'gpu:bf16))
+         (f64 (gpu:make-gpu-array 4 :device device :element-type 'gpu:f64))
+         (ints (gpu:make-gpu-array 4 :device device :element-type 'gpu:i32)))
+    (signals gpu:gpu-error (blas:axpy 4 1f0 f16 1 f32 1))
+    (signals gpu:gpu-error (blas:dot 4 f16 1 bf16 1))
+    (signals gpu:gpu-error (blas:copy 4 f32 1 f16 1))
+    (signals gpu:gpu-error (blas:asum 4 f64 1))
+    (signals gpu:gpu-error (blas:scal 4 1f0 ints 1))
+    (signals gpu:gpu-error (blas:iamax 4 #(1 2 3 4) 1))
+    (signals gpu:gpu-error (blas:saxpy 4 1f0 f16 1 f16 1))
+    (signals gpu:gpu-error (blas:sdot 4 bf16 1 bf16 1))
+    (signals gpu:gpu-error (blas:dsdot 4 f16 1 f16 1))
+    (signals gpu:gpu-error (blas:sdsdot 4 "1" f32 1 f32 1))
+    (finishes (blas:axpy 4 1f0 f16 1 f16 1))
+    (finishes (blas:copy 4 bf16 1 bf16 1))
+    (finishes (blas:saxpy 4 1f0 f32 1 f32 1))))

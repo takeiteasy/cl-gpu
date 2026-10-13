@@ -29,7 +29,7 @@
 (defun scale-span (device span beta)
   "Set the elements of SPAN to BETA times themselves."
   (unless (or (= beta 1f0) (zerop (span-count span)))
-    (%sscal (span-array span) beta (span-count span) (span-start span) (span-increment span)
+    (%scal-f32 (span-array span) beta (span-count span) (span-start span) (span-increment span)
             :grid (span-count span) :device device)))
 
 (defun sgemv (transpose alpha view x incx beta y incy &key (x-offset 0) (y-offset 0))

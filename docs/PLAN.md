@@ -49,7 +49,8 @@ OpenCL goes first when the backends start, as the cheaper second check that the 
 | Queued launches with batched command submission ([done](kernels.md#queued-launches)) | [#42](https://github.com/communal-software/cl-gpu/issues/42) |
 | Metal stream: tuned commit interval, waiting only on the buffers in use, per-thread streams, staging ring for private uploads | [#48](https://github.com/communal-software/cl-gpu/issues/48), [#49](https://github.com/communal-software/cl-gpu/issues/49), [#50](https://github.com/communal-software/cl-gpu/issues/50), [#51](https://github.com/communal-software/cl-gpu/issues/51) |
 | MPS for broadcast and negative-stride batched `gemm` | [#47](https://github.com/communal-software/cl-gpu/issues/47) |
-| Complex routines; f16/bf16/f64; rotations | [#39](https://github.com/communal-software/cl-gpu/issues/39), [#40](https://github.com/communal-software/cl-gpu/issues/40), [#41](https://github.com/communal-software/cl-gpu/issues/41) |
+| f16/bf16 Level 1 and the mixed dots ([done](blas.md#element-types)) | [#40](https://github.com/communal-software/cl-gpu/issues/40) |
+| Complex routines; f64 routines; rotations | [#39](https://github.com/communal-software/cl-gpu/issues/39), [#55](https://github.com/communal-software/cl-gpu/issues/55), [#41](https://github.com/communal-software/cl-gpu/issues/41) |
 | MLX for cl-inference, independent of cl-gpu | [cl-inference#43](https://github.com/communal-software/cl-inference/issues/43) |
 | Body-only kernel output, so MLX can run DSL kernels as custom kernels | [#20](https://github.com/communal-software/cl-gpu/issues/20), [cl-inference#44](https://github.com/communal-software/cl-inference/issues/44) |
 

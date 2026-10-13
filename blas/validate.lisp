@@ -3,24 +3,29 @@
 (defstruct (span (:constructor make-span (array low increment count)))
   array low increment count)
 
-(defun check-f32-array (name array)
+(defun check-array-type (name array types)
+  "Signal unless ARRAY is a live gpu-array whose element type is one of TYPES, a list of names."
   (unless (typep array 'gpu-array)
     (gpu-fail "~(~a~): expected a gpu-array, got ~s" name array))
-  (unless (eq (gpu-array-element-type array) (parse-type 'f32))
-    (gpu-fail "~(~a~): expected an f32 array, got ~a" name
+  (unless (member (gpu-array-element-type array) types :key #'parse-type)
+    (gpu-fail "~(~a~): expected ~{~a~^ or ~} array, got ~a" name
+              (mapcar (lambda (type) (format nil "~(~a~)" (type-description (parse-type type)))) types)
               (type-description (gpu-array-element-type array))))
   (cl-gpu::live-buffer array)
   array)
 
-(defun check-span (name n array increment offset)
-  "The SPAN of N elements of ARRAY at INCREMENT from OFFSET."
+(defun check-f32-array (name array)
+  (check-array-type name array '(f32)))
+
+(defun check-span (name n array increment offset &optional (types '(f32)))
+  "The SPAN of N elements of ARRAY at INCREMENT from OFFSET. ARRAY holds one of TYPES."
   (unless (typep n '(integer 0))
     (gpu-fail "~(~a~): N must be a non-negative integer, got ~s" name n))
   (unless (and (integerp increment) (/= increment 0))
     (gpu-fail "~(~a~): the increment must be a non-zero integer, got ~s" name increment))
   (unless (typep offset '(integer 0))
     (gpu-fail "~(~a~): the offset must be a non-negative integer, got ~s" name offset))
-  (check-f32-array name array)
+  (check-array-type name array types)
   (let ((last (if (zerop n) offset (+ offset (* (1- n) (abs increment))))))
     (unless (if (zerop n)
                 (<= offset (gpu-array-length array))
