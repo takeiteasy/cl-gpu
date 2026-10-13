@@ -93,3 +93,23 @@
              (declare (ignore op component))
              (unless (uiop:symbol-call :cl-gpu/metal/tests :run-tests)
                (error "cl-gpu/metal tests failed"))))
+
+(asdf:defsystem "cl-gpu/blas"
+  :description "BLAS Level 1 on the GPU for cl-gpu"
+  :license "GPL-3.0-only"
+  :depends-on ("cl-gpu")
+  :serial t
+  :components ((:module "blas"
+                :serial t
+                :components ((:file "package")
+                             (:file "validate")
+                             (:file "level1"))))
+  :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/blas/tests"))))
+
+(asdf:defsystem "cl-gpu/blas/tests"
+  :depends-on ("cl-gpu/blas" "cl-gpu/metal" "trivial-simd/blas" "fiveam")
+  :components ((:file "tests/blas"))
+  :perform (asdf:test-op (op component)
+             (declare (ignore op component))
+             (unless (uiop:symbol-call :cl-gpu/blas/tests :run-tests)
+               (error "cl-gpu/blas tests failed"))))

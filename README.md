@@ -6,7 +6,7 @@ S-expression GPU kernel DSL for Common Lisp with Metal, CUDA\* and OpenCL\* back
 
 \*Planned.
 
-See the [plan](docs/PLAN.md) for status and phases. To run kernels, see [kernels and arrays](docs/kernels.md). For kernel internals: [forms](docs/kernel-forms.md), [types](docs/types.md), [arrays](docs/arrays.md), [intrinsics](docs/intrinsics.md), the [IR](docs/kernel-ir.md), the [printers](docs/printers.md) and the [Metal runtime](docs/metal.md).
+See the [plan](docs/PLAN.md) for status and phases. To run kernels, see [kernels and arrays](docs/kernels.md). For kernel internals: [forms](docs/kernel-forms.md), [types](docs/types.md), [arrays](docs/arrays.md), [intrinsics](docs/intrinsics.md), the [IR](docs/kernel-ir.md), the [printers](docs/printers.md) and the [Metal runtime](docs/metal.md). For BLAS Level 1 on the GPU, see [BLAS](docs/blas.md).
 
 ## Tests
 
@@ -20,7 +20,13 @@ On macOS, the Metal runtime has its own tests:
 sbcl --noinform --non-interactive --eval '(asdf:test-system "cl-gpu/metal")'
 ```
 
-Both pass on SBCL, ECL and CCL.
+The BLAS routines are tested against [trivial-simd/blas](https://github.com/communal-software/trivial-simd) on a Metal device:
+
+```sh
+sbcl --noinform --non-interactive --eval '(asdf:test-system "cl-gpu/blas")'
+```
+
+All pass on SBCL, ECL and CCL.
 
 ## License
 
