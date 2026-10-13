@@ -360,7 +360,7 @@ a reversed view is compared with the reversed data in row-major order."
   (with-both-paths
     (let* ((x0 (random-vector 300)) (y0 (random-vector 300))
            (a0 (random-vector 12)) (b0 (random-vector 12)) (c0 (random-vector 9))
-           (x (copy-seq x0)) (y (copy-seq y0)) (a (copy-seq a0)) (c (copy-seq c0)))
+           (y (copy-seq y0)) (a (copy-seq a0)) (c (copy-seq c0)))
       (dotimes (i 40)
         (simd:saxpy 300 0.5f0 x0 1 y 1)
         (simd:sscal 300 0.99f0 y 1))
@@ -528,10 +528,13 @@ a reversed view is compared with the reversed data in row-major order."
 
 (defmethod gpu:device-target ((device mock-device)) :metal)
 (defmethod gpu:device-allocate ((device mock-device) bytes) (make-array bytes :initial-element 0))
-(defmethod gpu:device-free ((device mock-device) buffer))
+(defmethod gpu:device-free ((device mock-device) buffer)
+  (declare (ignore buffer)))
 (defmethod gpu:device-store ((device mock-device) buffer sequence element-type)
+  (declare (ignore element-type))
   (replace buffer sequence))
 (defmethod gpu:device-load ((device mock-device) buffer sequence element-type)
+  (declare (ignore element-type))
   (replace sequence buffer))
 (defmethod gpu:device-prepare ((device mock-device) source entry-name &key &allow-other-keys)
   entry-name)

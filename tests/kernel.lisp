@@ -14,10 +14,14 @@
 (defmethod gpu:device-target ((device mock-device)) :metal)
 (defmethod gpu:device-shared-memory-limit ((device mock-device)) (slot-value device 'limit))
 (defmethod gpu:device-allocate ((device mock-device) bytes) (make-array bytes :initial-element 0))
-(defmethod gpu:device-free ((device mock-device) buffer) (incf (freed device)))
+(defmethod gpu:device-free ((device mock-device) buffer)
+  (declare (ignore buffer))
+  (incf (freed device)))
 (defmethod gpu:device-store ((device mock-device) buffer sequence element-type)
+  (declare (ignore element-type))
   (replace buffer sequence))
 (defmethod gpu:device-load ((device mock-device) buffer sequence element-type)
+  (declare (ignore element-type))
   (replace sequence buffer))
 (defmethod gpu:device-prepare ((device mock-device) source entry-name &key precise-math)
   (push (list source entry-name precise-math) (prepared device))
@@ -330,6 +334,7 @@
 (defun expansion-error-in-file (form-text &key (file-text *located-file-text*) snippet)
   "Expand the kernel FORM-TEXT as though it were compiled from a file holding FILE-TEXT.
 Return the kernel-error signalled, or NIL if none."
+  (declare (ignorable snippet))
   (uiop:with-temporary-file (:stream out :pathname path)
     (write-string file-text out)
     (finish-output out)
