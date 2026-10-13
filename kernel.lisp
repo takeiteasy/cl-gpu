@@ -25,7 +25,33 @@
   "The lowered IR-KERNEL of KERNEL."
   (gpu-kernel-ir kernel))
 
-(defmacro define-kernel (name arguments &body body)
+(defun lower-form-cst (cst)
+  "Lower the `define-kernel` form CST, so that errors carry its source locations."
+  (let* ((name (cst:raw (cst:second cst)))
+         (arguments (cst:third cst))
+         (body (cst:nthrest 3 cst)))
+    (when (and (stringp (cst:raw (cst:first body))) (cst:rest body))
+      (setf body (cst:rest body)))
+    (lower-kernel (cst:cons (cst:cst-from-expression 'progn) body :source (cst:source cst))
+                  :name name :arguments arguments)))
+
+(defun located-kernel-error (whole original)
+  "The error from lowering the file text of WHOLE if it repeats ORIGINAL with a location, or NIL."
+  (let ((cst (find-form-cst whole)))
+    (when cst
+      (handler-case (progn (lower-form-cst cst) nil)
+        (kernel-error (located)
+          (when (and (eq (type-of located) (type-of original))
+                     (string= (kernel-error-message located) (kernel-error-message original)))
+            located))))))
+
+(defun check-kernel (whole name arguments form)
+  "Lower FORM now. A kernel error is signalled with a source location when WHOLE can be found in its file."
+  (handler-case (lower-kernel form :name name :arguments arguments)
+    (kernel-error (original)
+      (error (or (located-kernel-error whole original) original)))))
+
+(defmacro define-kernel (&whole whole name arguments &body body)
   "Define the function NAME, which runs BODY on the GPU.
 ARGUMENTS is a list of (parameter type). The function takes one argument per parameter, then
 the keywords :grid (required), :group, :wait (default true) and :device. BODY is lowered now,
@@ -38,7 +64,7 @@ so type errors are reported when the definition is compiled."
         (group (gensym "GROUP"))
         (wait (gensym "WAIT"))
         (device (gensym "DEVICE")))
-    (lower-kernel form :name name :arguments arguments)
+    (check-kernel whole name arguments form)
     `(progn
        (setf (get ',name 'gpu-kernel) (make-gpu-kernel ',name ',arguments ',form))
        (defun ,name (,@parameters &key ((:grid ,grid)) ((:group ,group)) ((:wait ,wait) t)

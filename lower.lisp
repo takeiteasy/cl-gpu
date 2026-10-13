@@ -953,12 +953,16 @@ BROADCAST, a vector among the nodes decides the type and a scalar of its element
 ;;; Kernels
 
 (defun parse-parameters (arguments)
-  (loop for argument in arguments
-        collect (destructuring-bind (name spec) argument
-                  (let ((type (parse-type spec)))
-                    (when (atomic-type-p type)
-                      (type-failure spec "a parameter cannot have an atomic type"))
-                    (cons name type)))))
+  "Parse ARGUMENTS, a list of (name type) or a CST of one, into (name . type) pairs."
+  (loop for argument in (if (typep arguments 'cst:cst) (cst:listify arguments) arguments)
+        collect (let ((cst (and (typep argument 'cst:cst) argument)))
+                  (destructuring-bind (name spec) (if cst (cst:raw cst) argument)
+                    (let* ((*current-source* (or (and cst (cst:source (cst:second cst)))
+                                                 *current-source*))
+                           (type (parse-type spec)))
+                      (when (atomic-type-p type)
+                        (type-failure spec "a parameter cannot have an atomic type"))
+                      (cons name type))))))
 
 (defun wrap-in-nil-block (form)
   "A CST for (block nil FORM), so that `return` leaves the kernel."

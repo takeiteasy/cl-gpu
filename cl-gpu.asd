@@ -40,6 +40,7 @@
                (:file "types")
                (:file "ast")
                (:file "reader")
+               (:file "source")
                (:file "env")
                (:file "walker")
                (:file "macros")

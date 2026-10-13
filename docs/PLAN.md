@@ -55,6 +55,6 @@ Kernels print as Metal source and run through [`define-kernel`](kernels.md) on t
 - Swizzles are read-only ([#22](https://github.com/communal-software/cl-gpu/issues/22)).
 - Vectors cannot be compared, and `min`, `max`, `clamp`, `pow` and `fma` do not broadcast a scalar ([#23](https://github.com/communal-software/cl-gpu/issues/23)).
 - CUDA needs operators and broadcast for vector types ([#12](https://github.com/communal-software/cl-gpu/issues/12)).
-- Errors in `define-kernel` bodies have no source location ([#16](https://github.com/communal-software/cl-gpu/issues/16)).
+- Kernel errors have no source location when compiled from an editor buffer with `C-c C-c` ([#27](https://github.com/communal-software/cl-gpu/issues/27)).
 - Kernel pipelines of released devices stay cached ([#18](https://github.com/communal-software/cl-gpu/issues/18)).
 - Buffers use shared storage only ([#15](https://github.com/communal-software/cl-gpu/issues/15)).

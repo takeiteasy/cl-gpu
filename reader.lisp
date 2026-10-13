@@ -24,10 +24,12 @@
 (defmethod eclector.base:make-source-range ((client kernel-client) start end)
   (client-location client start end))
 
+(defun make-kernel-client (text file)
+  (make-instance 'kernel-client :file file :line-starts (line-starts text)))
+
 (defun read-kernel-from-string (text &key file (package *package*))
   "Read every form in TEXT into a list of CSTs carrying SOURCE-LOCATIONs."
-  (let* ((client (make-instance 'kernel-client
-                                :file file :line-starts (line-starts text)))
+  (let* ((client (make-kernel-client text file))
          (eclector.reader:*client* client)
          (*package* (find-package package))
          (stream (make-string-input-stream text)))

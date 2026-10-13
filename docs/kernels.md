@@ -76,11 +76,11 @@ An array not freed is released when it is garbage collected. Use `free` for larg
 
 ## Errors
 
-`gpu-error` covers a bad launch (missing `:grid`, wrong argument type, an array from another device or already freed, an element type that differs from the pointer's, shared memory over the [device limit](arrays.md#shared-memory)) and backend failures; `metal-error` is a subclass. `kernel-type-error` is signalled when the definition is compiled.
+`gpu-error` covers a bad launch (missing `:grid`, wrong argument type, an array from another device or already freed, an element type that differs from the pointer's, shared memory over the [device limit](arrays.md#shared-memory)) and backend failures; `metal-error` is a subclass. `kernel-type-error` is signalled when the definition is compiled, with the `file:line:col` of the offending form or parameter type.[^4]
 
 ## Limitations
 
-- A type error in a `define-kernel` body has no source location ([#16](https://github.com/communal-software/cl-gpu/issues/16)).
+- A kernel error has no location when compiled from an editor buffer with `C-c C-c` ([#27](https://github.com/communal-software/cl-gpu/issues/27)).
 - Pipelines of a released device stay cached ([#18](https://github.com/communal-software/cl-gpu/issues/18)).
 
 ## Backends
@@ -90,3 +90,4 @@ A backend implements `device-target`, `device-allocate`, `device-free`, `device-
 [^1]: The cache is per kernel and per device. `device-prepare` receives the source and the entry function name and returns whatever `device-launch` runs.
 [^2]: `device-launch` receives its arguments as `(:buffer b)`, `(:bytes type value)` or `(:shared bytes)` in parameter order, the grid and group as lists of three, and returns the backend's command.
 [^3]: A 3-vector takes the space of a 4-vector in the buffer, as in Metal; the padding is never read or written. `:flat` has no effect on scalar arrays.
+[^4]: The location comes from re-reading the file being compiled or loaded and finding the `define-kernel` form in it. There is none for a form produced by another macro, written with `#.`, a backquote or an uninterned symbol, or evaluated at the REPL. Two identical `define-kernel` forms in one file both point at the first.

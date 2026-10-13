@@ -277,6 +277,100 @@
     (signals gpu:kernel-type-error
       (macroexpand-1 (read-from-string "(define-kernel broken ((out (ptr nonsense :global))) nil)")))))
 
+;;; Source locations
+
+(defparameter *located-file-text*
+  "(in-package #:cl-gpu/tests/kernel)
+
+(define-kernel earlier ((out (ptr f32 :global)))
+  (setf (aref out 0) (global-id 0)))
+
+(define-kernel documented ((out (ptr f32 :global)))
+  \"Docstring.\"
+  (setf (aref out 0) (global-id 0)))
+
+(define-kernel bad-parameter ((out (ptr nonsense :global)))
+  nil)")
+
+(defun expansion-error-in-file (form-text &key (file-text *located-file-text*) snippet)
+  "Expand the kernel FORM-TEXT as though it were compiled from a file holding FILE-TEXT.
+Return the kernel-error signalled, or NIL if none."
+  (uiop:with-temporary-file (:stream out :pathname path)
+    (write-string file-text out)
+    (finish-output out)
+    (let ((*package* (find-package '#:cl-gpu/tests/kernel))
+          (*load-truename* (truename path))
+          #+sbcl (sb-c::*source-plist* (if snippet '(:emacs-buffer "k.lisp") nil)))
+      (handler-case (progn (macroexpand-1 (read-from-string form-text)) nil)
+        (gpu:kernel-error (condition) condition)))))
+
+(defun located-position (condition)
+  (let ((location (gpu:kernel-error-location condition)))
+    (and location
+         (list (gpu:source-location-line location)
+               (gpu:source-location-column location)))))
+
+(test kernel-errors-are-located-in-the-file
+  (let ((condition (expansion-error-in-file
+                    "(define-kernel earlier ((out (ptr f32 :global)))
+  (setf (aref out 0) (global-id 0)))")))
+    (is (typep condition 'gpu:kernel-type-error))
+    (is (equal '(4 22) (located-position condition)))))
+
+(test kernel-errors-are-located-past-a-docstring
+  (let ((condition (expansion-error-in-file
+                    "(define-kernel documented ((out (ptr f32 :global)))
+  \"Docstring.\"
+  (setf (aref out 0) (global-id 0)))")))
+    (is (equal '(8 22) (located-position condition)))))
+
+(test parameter-errors-are-located
+  (let ((condition (expansion-error-in-file
+                    "(define-kernel bad-parameter ((out (ptr nonsense :global)))
+  nil)")))
+    (is (equal '(10 36) (located-position condition)))))
+
+(test identical-forms-differing-in-a-literal-are-told-apart
+  (let ((condition (expansion-error-in-file
+                    "(define-kernel earlier ((out (ptr f32 :global)))
+  (setf (aref out 1) (global-id 0)))")))
+    (is (typep condition 'gpu:kernel-type-error))
+    (is (null (gpu:kernel-error-location condition)))))
+
+(test kernel-errors-have-no-location-without-a-file
+  (let ((*package* (find-package '#:cl-gpu/tests/kernel)))
+    (handler-case (macroexpand-1 (read-from-string
+                                  "(define-kernel broken ((out (ptr f32 :global)))
+                                     (setf (aref out 0) (global-id 0)))"))
+      (gpu:kernel-type-error (condition)
+        (is (null (gpu:kernel-error-location condition)))))))
+
+#+sbcl
+(test editor-snippets-have-no-location
+  (let ((condition (expansion-error-in-file
+                    "(define-kernel earlier ((out (ptr f32 :global)))
+  (setf (aref out 0) (global-id 0)))"
+                    :snippet t)))
+    (is (typep condition 'gpu:kernel-type-error))
+    (is (null (gpu:kernel-error-location condition)))))
+
+(test compile-file-reports-the-kernel-location
+  (let ((source (merge-pathnames "cl-gpu-located-test.lisp" (uiop:temporary-directory)))
+        (fasl (merge-pathnames "cl-gpu-located-test.fasl" (uiop:temporary-directory))))
+    (unwind-protect
+         (progn
+           (with-open-file (out source :direction :output :if-exists :supersede)
+             (write-string *located-file-text* out))
+           (let ((report (with-output-to-string (*error-output*)
+                           (let ((*standard-output* *error-output*))
+                             (multiple-value-bind (output warnings failure)
+                                 (compile-file source :output-file fasl)
+                               (declare (ignore output warnings))
+                               (is (eq t failure)))))))
+             (is (search (format nil "~a:4:22" (namestring (truename source))) report))))
+      (ignore-errors (delete-file source))
+      (ignore-errors (delete-file fasl)))))
+
 (test kernel-macros-are-usable-in-the-file-that-defines-them
   (let ((source (merge-pathnames "cl-gpu-kernel-macro-test.lisp" (uiop:temporary-directory))))
     (remhash (intern "TWICE-FOR-FILE" '#:cl-gpu/tests/kernel) gpu::*kernel-macros*)
