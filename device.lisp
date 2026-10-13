@@ -17,13 +17,20 @@
 (defgeneric device-free (device buffer)
   (:documentation "Release BUFFER. May run on a finalizer thread."))
 
-(defgeneric device-store (device buffer sequence element-type)
-  (:documentation "Store the numbers in SEQUENCE from the start of BUFFER as ELEMENT-TYPE, a scalar or vector type.
+(defgeneric device-offset-alignment (device address-space)
+  (:documentation "The bytes a buffer binding's offset must be a multiple of for a kernel pointer
+parameter in ADDRESS-SPACE, :global or :constant.")
+  (:method (device address-space)
+    (declare (ignore device address-space))
+    1))
+
+(defgeneric device-store (device buffer sequence element-type offset)
+  (:documentation "Store the numbers in SEQUENCE from byte OFFSET of BUFFER as ELEMENT-TYPE, a scalar or vector type.
 The components of vector elements are consecutive in SEQUENCE. A 3-vector takes the space of a 4-vector.
 Launches that are still running finish first."))
 
-(defgeneric device-load (device buffer sequence element-type)
-  (:documentation "Fill SEQUENCE with the components of elements of ELEMENT-TYPE from the start of BUFFER.
+(defgeneric device-load (device buffer sequence element-type offset)
+  (:documentation "Fill SEQUENCE with the components of elements of ELEMENT-TYPE from byte OFFSET of BUFFER.
 ELEMENT-TYPE and the layout are those of DEVICE-STORE. Launches that are still running finish first."))
 
 (defgeneric device-prepare (device source entry-name &key precise-math)
@@ -32,7 +39,7 @@ compile without fast math."))
 
 (defgeneric device-launch (device prepared arguments grid group)
   (:documentation "Enqueue PREPARED over GRID, a list of three thread counts, in groups of GROUP or NIL.
-ARGUMENTS are (:buffer buffer), (:bytes type value) or (:shared bytes) in parameter order.
+ARGUMENTS are (:buffer buffer byte-offset), (:bytes type value) or (:shared bytes) in parameter order.
 Launches on one device run in order, but may not have started when this returns: DEVICE-STORE,
 DEVICE-LOAD and DEVICE-SYNCHRONIZE wait for them."))
 

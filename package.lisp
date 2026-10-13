@@ -4,12 +4,14 @@
   (:export
    ;; Kernels and arrays
    #:define-kernel #:find-kernel #:kernel-ir
-   #:gpu-array #:make-gpu-array #:to-device #:from-device #:free #:with-gpu-array
+   #:gpu-array #:make-gpu-array #:gpu-array-view #:make-gpu-array-view #:gpu-array-view-p
+   #:gpu-array-view-owner #:gpu-array-view-offset #:to-device #:copy-into #:from-device #:free #:with-gpu-array
    #:gpu-array-length #:gpu-array-element-type #:gpu-array-device
    #:synchronize
    ;; Backends
    #:*device* #:current-device #:register-backend
    #:device-target #:device-shared-memory-limit #:device-allocate #:device-free #:device-store #:device-load
+   #:device-offset-alignment
    #:device-prepare #:device-launch #:device-synchronize #:device-gemm #:device-gemv
    ;; Reader
    #:read-kernel

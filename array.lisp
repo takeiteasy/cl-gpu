@@ -7,12 +7,31 @@
    (length :initarg :length :reader gpu-array-length))
   (:documentation "A device buffer of LENGTH elements of one scalar or vector ELEMENT-TYPE."))
 
+(defclass gpu-array-view (gpu-array)
+  ((owner :initarg :owner :reader gpu-array-view-owner)
+   (offset :initarg :offset :reader gpu-array-view-offset))
+  (:documentation "A window onto the buffer of OWNER, an array that owns its buffer, starting OFFSET
+elements in. It keeps OWNER alive and is freed with it."))
+
+(defmethod array-buffer ((view gpu-array-view))
+  (array-buffer (gpu-array-view-owner view)))
+
 (defmethod print-object ((array gpu-array) stream)
   (print-unreadable-object (array stream :type t)
-    (format stream "~a x ~a~:[~; (freed)~]"
+    (format stream "~a x ~a~@[ at ~a~]~:[~; (freed)~]"
             (gpu-array-length array)
             (type-description (gpu-array-element-type array))
+            (and (gpu-array-view-p array) (gpu-array-view-offset array))
             (null (array-buffer array)))))
+
+(defun gpu-array-view-p (object)
+  (typep object 'gpu-array-view))
+
+(defun array-root-and-offset (array)
+  "The array that owns the buffer of ARRAY, and the element offset of ARRAY in it."
+  (if (gpu-array-view-p array)
+      (values (gpu-array-view-owner array) (gpu-array-view-offset array))
+      (values array 0)))
 
 (defun parse-element-type (spec)
   (let ((type (parse-type spec)))
@@ -31,6 +50,11 @@
   (or (array-buffer array)
       (gpu-fail "the array was freed")))
 
+(defun array-byte-offset (array)
+  "Bytes from the start of the buffer of ARRAY to its first element."
+  (* (nth-value 1 (array-root-and-offset array))
+     (element-bytes (gpu-array-element-type array))))
+
 (defun finalizer (device buffer)
   "A function freeing BUFFER that holds no reference to the array that owns it."
   (lambda () (device-free device buffer)))
@@ -48,8 +72,23 @@ The array is freed when garbage collected, or sooner by FREE."
       (handler-bind ((error (lambda (condition)
                               (declare (ignore condition))
                               (free array))))
-        (store-contents array initial-contents)))
+        (copy-into array initial-contents)))
     array))
+
+(defun make-gpu-array-view (array length &key (offset 0))
+  "A view of LENGTH elements of ARRAY from element OFFSET. It shares the memory of ARRAY, which a
+view of a view shares too, and keeps it alive. Freeing a view does nothing."
+  (unless (typep array 'gpu-array)
+    (gpu-fail "expected a gpu-array, got ~s" array))
+  (unless (and (typep length '(integer 0)) (typep offset '(integer 0))
+               (<= (+ offset length) (gpu-array-length array)))
+    (gpu-fail "a view of ~s elements from ~s does not fit an array of ~d"
+              length offset (gpu-array-length array)))
+  (live-buffer array)
+  (multiple-value-bind (root base) (array-root-and-offset array)
+    (make-instance 'gpu-array-view :device (gpu-array-device array)
+                                   :element-type (gpu-array-element-type array)
+                                   :length length :owner root :offset (+ base offset))))
 
 (defun flat-components (type sequence)
   "The components in SEQUENCE: numbers, or for a vector TYPE a sequence per element, which is
@@ -75,7 +114,8 @@ flattened into a vector specialised to the component type."
         components)
       sequence))
 
-(defun store-contents (array sequence)
+(defun copy-into (array sequence)
+  "Store SEQUENCE in the first elements of ARRAY, in the form TO-DEVICE takes. Return ARRAY."
   (let* ((type (gpu-array-element-type array))
          (components (flat-components type sequence))
          (count (component-count type)))
@@ -85,7 +125,9 @@ flattened into a vector specialised to the component type."
     (unless (<= (/ (length components) count) (gpu-array-length array))
       (gpu-fail "~d elements do not fit an array of ~d"
                 (/ (length components) count) (gpu-array-length array)))
-    (device-store (gpu-array-device array) (live-buffer array) components type)))
+    (device-store (gpu-array-device array) (live-buffer array) components type
+                  (array-byte-offset array))
+    array))
 
 (defun to-device (sequence &key (element-type 'f32) device)
   "A new array holding SEQUENCE: numbers, or for a vector ELEMENT-TYPE a sequence of components per
@@ -102,7 +144,8 @@ INTO if given. A vector element is a vector of its components, or with FLAT the 
          (count (component-count type))
          (limit (gpu-array-length array)))
     (flet ((load-into (components)
-             (device-load (gpu-array-device array) (live-buffer array) components type)))
+             (device-load (gpu-array-device array) (live-buffer array) components type
+                         (array-byte-offset array))))
       (if (and (vector-type-p type) (not flat))
           (let* ((elements (or into (make-array limit)))
                  (components (make-array (* count (length elements))
@@ -123,8 +166,8 @@ INTO if given. A vector element is a vector of its components, or with FLAT the 
             components)))))
 
 (defun free (array)
-  "Release ARRAY's device memory now. Freeing twice is harmless."
-  (let ((buffer (array-buffer array)))
+  "Release ARRAY's device memory now. Freeing twice is harmless. Freeing a view does nothing."
+  (let ((buffer (and (not (gpu-array-view-p array)) (array-buffer array))))
     (when buffer
       (setf (array-buffer array) nil)
       (tg:cancel-finalization array)

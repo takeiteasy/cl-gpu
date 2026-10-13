@@ -26,8 +26,8 @@
 |---|---|
 | `(default-device)` | the system GPU; `device-name`, `device-max-threads`, `device-max-threadgroup-memory` (bytes) |
 | `(make-buffer device bytes &key storage)` | a zeroed buffer; `storage` is `:auto`, `:shared` or `:private` ([Storage](#storage)) |
-| `(copy-to-buffer buffer sequence &key element-type)` | stores numbers from the buffer's start; `element-type` is a scalar or vector type, default `f32`[^3] |
-| `(copy-from-buffer buffer sequence &key element-type)` | fills `sequence` from the buffer's start[^3] |
+| `(copy-to-buffer buffer sequence &key element-type offset)` | stores numbers from byte `offset` (default 0); `element-type` is a scalar or vector type, default `f32`[^3] |
+| `(copy-from-buffer buffer sequence &key element-type offset)` | fills `sequence` from byte `offset` (default 0)[^3] |
 | `(buffer-pointer buffer)`, `(buffer-size buffer)` | host address (shared buffers only) and size in bytes |
 | `(buffer-storage buffer)`, `(device-unified-memory-p device)` | `:shared` or `:private`; whether the host and GPU share memory |
 | `(compile-library device source)` | a library; a compile error signals `metal-compile-error` with the compiler's log |
@@ -57,7 +57,7 @@ A private transfer copies through a shared staging buffer that each device keeps
 
 | Argument | Binds |
 |---|---|
-| a buffer | the next `[[buffer(i)]]` |
+| a buffer, or `(:buffer buffer byte-offset)` | the next `[[buffer(i)]]`, bound from the offset |
 | `(:bytes type value)` | the next `[[buffer(i)]]`, a scalar or vector copied by value |
 | `(:threadgroup bytes)` | the next `[[threadgroup(k)]]`, for a `:shared` pointer; `bytes` is rounded up to a multiple of 16 |
 
@@ -93,6 +93,6 @@ The shim links MetalPerformanceShaders. With `cl-gpu/blas` loaded, `device-gemm`
 
 `metal-error` is signalled for a missing device, a released object, a transfer that overflows the buffer, an unknown kernel name or a failed command. `metal-compile-error` is its subclass for source that does not compile. Both carry `metal-error-message`.
 
-[^1]: A private buffer is rounded up to a multiple of 4 bytes, which Metal requires of blit copies; `buffer-size` still reports the requested size. A partial upload leaves the bytes after it unchanged. The private path is tested on Apple silicon by binding `*buffer-storage*`; it has not run on a discrete GPU.
+[^1]: A private buffer is rounded up to a multiple of 4 bytes, which Metal requires of blit copies; `buffer-size` still reports the requested size. A partial upload, at any byte offset, leaves the bytes around it unchanged. The private path is tested on Apple silicon by binding `*buffer-storage*`; it has not run on a discrete GPU.
 [^2]: `dispatch` uses Metal's non-uniform threadgroups, available on Apple silicon GPUs.
 [^3]: A simple vector whose element type matches the buffer's scalar is copied with one `memcpy`: `single-float` for `f32`, `double-float` for `f64`, `(signed-byte N)` for `iN` and `(unsigned-byte N)` for `uN`. `f16`, `bf16`, `bool` and every other sequence are converted one component at a time, and a specialised vector of another type given to `copy-from-buffer` receives the values coerced to its element type. 1,000,000 `f32` take about 1 ms by `memcpy` and about 30 ms otherwise (Apple M1).

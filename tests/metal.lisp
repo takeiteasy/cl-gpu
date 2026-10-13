@@ -677,3 +677,70 @@ kernel void present() {}")
       (let ((metal:*buffer-storage* storage))
         (gpu:with-gpu-array (array (gpu:to-device data))
           (is (equalp data (gpu:from-device array))))))))
+
+;;; Views
+
+(defmacro with-each-storage (&body body)
+  `(dolist (storage '(:shared :private))
+     (let ((gpu::*device* nil)
+           (metal:*buffer-storage* storage))
+       ,@body)))
+
+(test transfers-reach-a-view-and-leave-the-rest-of-its-owner
+  (with-each-storage
+    (loop for (type owner offset replacement expected)
+            in '((gpu:u8 #(1 2 3 4 5 6 7 8 9) 1 #(20 30 40) #(1 20 30 40 5 6 7 8 9))
+                 (gpu:u8 #(1 2 3 4 5 6 7 8 9) 3 #(40 50) #(1 2 3 40 50 6 7 8 9))
+                 (gpu:f16 #(1 2 3 4 5 6 7) 3 #(30 40 50) #(1 2 3 30 40 50 7))
+                 (gpu:f32 #(1 2 3 4 5) 2 #(30 40) #(1 2 30 40 5))
+                 (gpu:u32 #(1 2 3 4 5) 1 #(20 30) #(1 20 30 4 5)))
+          do (gpu:with-gpu-array (array (gpu:to-device owner :element-type type))
+               (let ((view (gpu:make-gpu-array-view array (length replacement) :offset offset)))
+                 (gpu:copy-into view replacement)
+                 (is (equalp (map 'vector (lambda (value) (coerce value 'double-float)) expected)
+                             (map 'vector (lambda (value) (coerce value 'double-float))
+                                  (gpu:from-device array)))
+                     "~a at ~d, ~a" type offset storage)
+                 (is (equalp (map 'vector (lambda (value) (coerce value 'double-float)) replacement)
+                             (map 'vector (lambda (value) (coerce value 'double-float))
+                                  (gpu:from-device view)))))))))
+
+(test vector-elements-transfer-through-a-view
+  (with-each-storage
+    (gpu:with-gpu-array (array (gpu:to-device '(#(1 2 3) #(4 5 6) #(7 8 9))
+                                              :element-type '(gpu:vec gpu:f32 3)))
+      (let ((view (gpu:make-gpu-array-view array 2 :offset 1)))
+        (is (equalp #(#(4.0 5.0 6.0) #(7.0 8.0 9.0)) (gpu:from-device view)))
+        (gpu:copy-into view '(#(0 0 0)))
+        (is (equalp #(#(1.0 2.0 3.0) #(0.0 0.0 0.0) #(7.0 8.0 9.0)) (gpu:from-device array)))))))
+
+(test transfers-past-the-end-of-a-view-are-refused
+  (with-each-storage
+    (gpu:with-gpu-array (array (gpu:to-device #(1 2 3 4) :element-type 'gpu:u32))
+      (let ((view (gpu:make-gpu-array-view array 2 :offset 1)))
+        (signals gpu:gpu-error (gpu:copy-into view #(1 2 3)))
+        (signals gpu:gpu-error (gpu:from-device view :into (make-array 3)))))))
+
+(test kernels-read-and-write-through-views
+  (eval-kernel "(define-kernel view-double ((out (ptr f32 :global)) (in (ptr f32 :global)))
+                  (setf (aref out (global-id 0)) (* 2.0 (aref in (global-id 0)))))")
+  (with-each-storage
+    (gpu:with-gpu-array (in (gpu:to-device #(1 2 3 4 5 6 7 8)))
+      (gpu:with-gpu-array (out (gpu:to-device #(0 0 0 0 0 0 0 0)))
+        (funcall (kernel-function "view-double")
+                 (gpu:make-gpu-array-view out 3 :offset 4)
+                 (gpu:make-gpu-array-view in 3 :offset 2)
+                 :grid 3)
+        (is (equalp #(0.0 0.0 0.0 0.0 6.0 8.0 10.0 0.0) (gpu:from-device out)) "~a" storage)))))
+
+(test constant-bindings-need-an-aligned-view
+  (eval-kernel "(define-kernel view-constant ((out (ptr f32 :global)) (in (ptr f32 :constant)))
+                  (setf (aref out 0) (aref in 0)))")
+  (gpu:with-gpu-array (in (gpu:to-device (filled 128 #'float)))
+    (gpu:with-gpu-array (out (gpu:make-gpu-array 1))
+      (funcall (kernel-function "view-constant") out (gpu:make-gpu-array-view in 4 :offset 64)
+               :grid 1 :wait t)
+      (is (equalp #(64.0) (gpu:from-device out)))
+      (signals gpu:gpu-error
+        (funcall (kernel-function "view-constant") out (gpu:make-gpu-array-view in 4 :offset 1)
+                 :grid 1)))))

@@ -18,7 +18,8 @@
   (check-array-type name array '(f32)))
 
 (defun check-span (name n array increment offset &optional (types '(f32)))
-  "The SPAN of N elements of ARRAY at INCREMENT from OFFSET. ARRAY holds one of TYPES."
+  "The SPAN of N elements of ARRAY at INCREMENT from OFFSET. ARRAY holds one of TYPES. The span is
+on the array that owns the buffer of ARRAY, in its elements."
   (unless (typep n '(integer 0))
     (gpu-fail "~(~a~): N must be a non-negative integer, got ~s" name n))
   (unless (and (integerp increment) (/= increment 0))
@@ -31,7 +32,8 @@
                 (<= offset (gpu-array-length array))
                 (< last (gpu-array-length array)))
       (gpu-fail "~(~a~): the span exceeds an array of ~d elements" name (gpu-array-length array))))
-  (make-span array offset increment n))
+  (multiple-value-bind (root base) (cl-gpu::array-root-and-offset array)
+    (make-span root (+ base offset) increment n)))
 
 (defun span-start (span)
   "The first index SPAN visits."
@@ -73,8 +75,10 @@
 
 (defstruct (operand (:constructor make-operand
                         (array offset row-stride column-stride rows cols
-                         &optional (batch-stride 0) (batch-count 1))))
-  array offset row-stride column-stride rows cols batch-stride batch-count)
+                         &optional (batch-stride 0) (batch-count 1) (base 0) limit)))
+  array offset row-stride column-stride rows cols batch-stride batch-count
+  ;; The operand may address LIMIT elements of ARRAY from element BASE: the view it was made on.
+  base limit)
 
 (defun operand-list (operand)
   "OPERAND as the (array offset row-stride column-stride) of the device protocol."
@@ -98,15 +102,16 @@
     (unless (matrix-view-p view)
       (gpu-fail "~(~a~): expected a matrix view, got ~s" name view))
     (check-f32-array name (matrix-view-data view))
-    (let ((data (matrix-view-data view))
-          (offset (matrix-view-offset view))
-          (rs (matrix-view-row-stride view))
-          (cs (matrix-view-column-stride view))
-          (rows (matrix-view-rows view))
-          (cols (matrix-view-cols view)))
-      (if transposed
-          (make-operand data offset cs rs cols rows batch-stride count)
-          (make-operand data offset rs cs rows cols batch-stride count)))))
+    (multiple-value-bind (root base) (cl-gpu::array-root-and-offset (matrix-view-data view))
+      (let ((limit (gpu-array-length (matrix-view-data view)))
+            (offset (+ base (matrix-view-offset view)))
+            (rs (matrix-view-row-stride view))
+            (cs (matrix-view-column-stride view))
+            (rows (matrix-view-rows view))
+            (cols (matrix-view-cols view)))
+        (if transposed
+            (make-operand root offset cs rs cols rows batch-stride count base limit)
+            (make-operand root offset rs cs rows cols batch-stride count base limit))))))
 
 (defun real-scalar (name label value)
   (unless (realp value)
@@ -130,10 +135,9 @@
   "Signal unless every product of OPERAND's batch lies inside its array."
   (let ((region (operand-region operand)))
     (when (and region
-               (not (and (<= 0 (second region))
-                         (< (third region) (gpu-array-length (first region))))))
-      (gpu-fail "~(~a~): the batch exceeds an array of ~d elements" name
-                (gpu-array-length (first region))))))
+               (not (and (<= (operand-base operand) (second region))
+                         (< (third region) (+ (operand-base operand) (operand-limit operand))))))
+      (gpu-fail "~(~a~): the batch exceeds an array of ~d elements" name (operand-limit operand)))))
 
 (defun span-region (span)
   (when (plusp (span-count span))

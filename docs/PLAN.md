@@ -51,6 +51,7 @@ OpenCL goes first when the backends start, as the cheaper second check that the 
 | MPS for broadcast and negative-stride batched `gemm` | [#47](https://github.com/communal-software/cl-gpu/issues/47) |
 | f16/bf16 Level 1 and the mixed dots ([done](blas.md#element-types)) | [#40](https://github.com/communal-software/cl-gpu/issues/40) |
 | Complex routines; f64 routines; rotations | [#39](https://github.com/communal-software/cl-gpu/issues/39), [#55](https://github.com/communal-software/cl-gpu/issues/55), [#41](https://github.com/communal-software/cl-gpu/issues/41) |
+| Sub-array views of a `gpu-array` ([done](kernels.md#views)), for cl-tensor storage | [#57](https://github.com/communal-software/cl-gpu/issues/57) |
 | MLX for cl-inference, independent of cl-gpu | [cl-inference#43](https://github.com/communal-software/cl-inference/issues/43) |
 | Body-only kernel output, so MLX can run DSL kernels as custom kernels | [#20](https://github.com/communal-software/cl-gpu/issues/20), [cl-inference#44](https://github.com/communal-software/cl-inference/issues/44) |
 
@@ -64,4 +65,5 @@ Kernels print as Metal source and run through [`define-kernel`](kernels.md) on t
 - Vectors cannot be compared, and `min`, `max`, `clamp`, `pow` and `fma` do not broadcast a scalar ([#23](https://github.com/communal-software/cl-gpu/issues/23)).
 - CUDA needs operators and broadcast for vector types ([#12](https://github.com/communal-software/cl-gpu/issues/12)).
 - Kernel errors have no source location when compiled from an editor buffer with `C-c C-c` ([#27](https://github.com/communal-software/cl-gpu/issues/27)).
+- Metal reports a fixed 256-byte alignment for `:constant` view bindings ([#72](https://github.com/communal-software/cl-gpu/issues/72)); OpenCL needs its own ([#73](https://github.com/communal-software/cl-gpu/issues/73)).
 - Kernel pipelines of released devices stay cached ([#18](https://github.com/communal-software/cl-gpu/issues/18)).

@@ -530,12 +530,13 @@ a reversed view is compared with the reversed data in row-major order."
 (defmethod gpu:device-allocate ((device mock-device) bytes) (make-array bytes :initial-element 0))
 (defmethod gpu:device-free ((device mock-device) buffer)
   (declare (ignore buffer)))
-(defmethod gpu:device-store ((device mock-device) buffer sequence element-type)
+(defmethod gpu:device-store ((device mock-device) buffer sequence element-type offset)
   (declare (ignore element-type))
-  (replace buffer sequence))
-(defmethod gpu:device-load ((device mock-device) buffer sequence element-type)
+  (replace buffer sequence :start1 offset))
+(defmethod gpu:device-load ((device mock-device) buffer sequence element-type offset)
   (declare (ignore element-type))
-  (map-into sequence (lambda (value) (coerce value (array-element-type sequence))) buffer))
+  (map-into sequence (lambda (value) (coerce value (array-element-type sequence)))
+            (subseq buffer offset)))
 (defmethod gpu:device-prepare ((device mock-device) source entry-name &key &allow-other-keys)
   entry-name)
 (defmethod gpu:device-launch ((device mock-device) prepared arguments grid group)
@@ -931,3 +932,67 @@ a reversed view is compared with the reversed data in row-major order."
     (finishes (blas:axpy 4 1f0 f16 1 f16 1))
     (finishes (blas:copy 4 bf16 1 bf16 1))
     (finishes (blas:saxpy 4 1f0 f32 1 f32 1))))
+
+;;; Views of arrays
+
+(test routines-work-through-views
+  (let ((x (random-vector 40)) (y (random-vector 40)))
+    (gpu:with-gpu-array (gx (gpu:to-device x))
+      (gpu:with-gpu-array (gy (gpu:to-device y))
+        (let ((vx (gpu:make-gpu-array-view gx 20 :offset 7))
+              (vy (gpu:make-gpu-array-view gy 20 :offset 13)))
+          (simd:saxpy 10 2.5f0 x 2 y 1 :x-offset 7 :y-offset 15)
+          (is (eq vy (blas:saxpy 10 2.5f0 vx 2 vy 1 :y-offset 2)))
+          (is (all-close-p y (gpu:from-device gy)))
+          (is (close-p (simd:sdot 10 x 1 y 1 :x-offset 7 :y-offset 13)
+                       (blas:sdot 10 vx 1 vy 1)))
+          (is (close-p (simd:snrm2 20 x 1 :x-offset 7) (blas:snrm2 20 vx 1)))
+          (is (= (simd:isamax 20 x 1 :x-offset 7) (blas:isamax 20 vx 1))))))))
+
+(test spans-stay-inside-their-view
+  (gpu:with-gpu-array (g (gpu:to-device (random-vector 20)))
+    (let ((view (gpu:make-gpu-array-view g 10 :offset 5)))
+      (finishes (blas:sscal 10 2f0 view 1))
+      (signals gpu:gpu-error (blas:sscal 11 2f0 view 1))
+      (signals gpu:gpu-error (blas:sscal 10 2f0 view 1 :x-offset 1))
+      (finishes (blas:sscal 5 2f0 view 2))
+      (signals gpu:gpu-error (blas:sscal 6 2f0 view 2)))))
+
+(test views-of-one-array-overlap-where-their-elements-do
+  (with-mock-arrays (device (x 20))
+    (let ((low (gpu:make-gpu-array-view x 10))
+          (high (gpu:make-gpu-array-view x 10 :offset 10))
+          (middle (gpu:make-gpu-array-view x 10 :offset 5)))
+      (finishes (blas:scopy 10 low 1 high 1))
+      (signals gpu:gpu-error (blas:scopy 10 low 1 middle 1))
+      (signals gpu:gpu-error (blas:scopy 10 middle 1 x 1 :y-offset 12))
+      (finishes (blas:scopy 5 middle 1 x 1 :y-offset 15)))))
+
+(test sgemm-multiplies-matrices-held-in-views
+  (let* ((a (random-vector 40)) (b (random-vector 40)) (c (random-vector 40))
+         (expected (copy-seq c)))
+    (simd:sgemm :no-transpose :no-transpose 1.5f0 (simd:make-matrix-view a 3 4 :offset 6)
+                (simd:make-matrix-view b 4 5 :offset 9) 0.5f0
+                (simd:make-matrix-view expected 3 5 :offset 17))
+    (dolist (use-mps '(t nil))
+      (gpu:with-gpu-array (ga (gpu:to-device a))
+        (gpu:with-gpu-array (gb (gpu:to-device b))
+          (gpu:with-gpu-array (gc (gpu:to-device c))
+            (let ((cl-gpu/metal:*use-mps* use-mps))
+              (blas:sgemm :no-transpose :no-transpose 1.5f0
+                          (blas:make-matrix-view (gpu:make-gpu-array-view ga 12 :offset 6) 3 4)
+                          (blas:make-matrix-view (gpu:make-gpu-array-view gb 20 :offset 9) 4 5)
+                          0.5f0
+                          (blas:make-matrix-view (gpu:make-gpu-array-view gc 15 :offset 17) 3 5)))
+            (is (all-close-k-p expected (gpu:from-device gc) 4) "mps ~a" use-mps)))))))
+
+(test matrices-stay-inside-their-view
+  (gpu:with-gpu-array (g (gpu:to-device (random-vector 100)))
+    (let ((view (gpu:make-gpu-array-view g 12 :offset 20)))
+      (signals gpu:gpu-error (blas:make-matrix-view view 4 4))
+      (finishes (blas:make-matrix-view view 3 4))
+      (signals gpu:gpu-error
+        (blas:sgemm-batch-strided :no-transpose :no-transpose 1f0
+                                  (blas:make-matrix-view view 2 2) (blas:make-matrix-view view 2 2)
+                                  0f0 (blas:make-matrix-view view 2 2)
+                                  :batch-count 4 :a-stride 4 :b-stride 4 :c-stride 4)))))

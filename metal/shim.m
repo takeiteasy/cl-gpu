@@ -228,7 +228,8 @@ int clgpu_stream_fill(void *handle, void *buffer, unsigned long length, char **e
 }
 
 // Arguments are bound in order. KINDS[i] selects how VALUES[i] and LENGTHS[i] are used:
-// a buffer, bytes copied from the pointer, or a threadgroup allocation of LENGTHS[i].
+// a buffer bound from byte LENGTHS[i], bytes copied from the pointer, or a threadgroup allocation of
+// LENGTHS[i].
 // The buffer index and the threadgroup index count separately, as in the generated source.
 // Returns 0 on success.
 int clgpu_stream_dispatch(void *handle, void *pipeline, int count, const int *kinds,
@@ -251,7 +252,7 @@ int clgpu_stream_dispatch(void *handle, void *pipeline, int count, const int *ki
             for (int i = 0; i < count; i++) {
                 switch (kinds[i]) {
                 case CLGPU_BUFFER:
-                    [encoder setBuffer:(id<MTLBuffer>)values[i] offset:0 atIndex:buffers++];
+                    [encoder setBuffer:(id<MTLBuffer>)values[i] offset:lengths[i] atIndex:buffers++];
                     break;
                 case CLGPU_BYTES:
                     [encoder setBytes:values[i] length:lengths[i] atIndex:buffers++];

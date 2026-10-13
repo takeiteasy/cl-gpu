@@ -48,5 +48,6 @@
            (scale-span device ys beta))
           (t
            (device-gemv device m n alpha (operand-list a)
-                        (list x (span-start xs) incx) beta (list y (span-start ys) incy))))
+                        (list (span-array xs) (span-start xs) incx) beta
+                        (list (span-array ys) (span-start ys) incy))))
     y))

@@ -36,7 +36,7 @@ Mixed-precision dots take f32 arrays:
 | `dsdot` | `n x incx y incy` | the dot product as a `double-float` |
 | `sdsdot` | `n alpha x incx y incy` | `alpha` plus the dot product, as a `single-float` |
 
-Each takes `:x-offset` (and `:y-offset` for two vectors), default 0. Vectors are `f32` `gpu-array`s on one device. Routines are [queued](kernels.md#queued-launches) and return at once; reductions wait for the result and return Lisp numbers.[^1]
+Each takes `:x-offset` (and `:y-offset` for two vectors), default 0. Vectors are `gpu-array`s, or [views](kernels.md#views) of them, on one device. Offsets and spans count from the start of a view and stay inside it. Routines are [queued](kernels.md#queued-launches) and return at once; reductions wait for the result and return Lisp numbers.[^1]
 
 ## Element types
 
@@ -66,7 +66,7 @@ A span is `n` elements from the offset, `|inc|` apart. A negative increment visi
 | `alpha = 0` | `saxpy` leaves `y` alone; `sscal` writes zeros without reading `x` |
 | zero increment, negative offset, span past the array | `gpu-error` |
 | unsupported or mismatched element types, freed array, arrays on different devices | `gpu-error` |
-| spans of one array that overlap | `gpu-error`.[^2] Identical spans are fine |
+| spans of one array that overlap, including through different views of it | `gpu-error`.[^2] Identical spans are fine |
 
 ## Limitations
 

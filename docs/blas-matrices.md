@@ -47,7 +47,7 @@ Dimensions, bounds and overlaps are checked over the whole batch before any laun
 
 ## Matrix views
 
-A view is a window onto an f32 `gpu-array`. It shares the array's storage, so changing the array changes the view.
+A view is a window onto an f32 `gpu-array`, or onto a [view of one](kernels.md#views). It shares the array's storage, so changing the array changes the view. Offsets and batches stay inside the array or array view it was made on.
 
 | Function | Result |
 |---|---|

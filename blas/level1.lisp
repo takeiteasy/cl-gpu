@@ -259,7 +259,8 @@ sees NAME, the routine called, and ELEMENT, the element type name."
     (check-disjoint name ys xs)
     (unless (or (zerop n) (zerop alpha))
       (funcall (level1-kernel "AXPY" element)
-               x y alpha n (span-start xs) incx (span-start ys) incy :grid n :device device))
+               (span-array xs) (span-array ys) alpha n (span-start xs) incx (span-start ys) incy
+               :grid n :device device))
     y))
 
 (define-level1-routine (scal sscal) (n alpha x incx) ((x-offset 0)) x
@@ -268,7 +269,7 @@ sees NAME, the routine called, and ELEMENT, the element type name."
          (alpha (real-scalar name "ALPHA" alpha)))
     (unless (zerop n)
       (funcall (level1-kernel "SCAL" element)
-               x alpha n (span-start xs) incx :grid n :device (gpu-array-device x)))
+               (span-array xs) alpha n (span-start xs) incx :grid n :device (gpu-array-device x)))
     x))
 
 (define-level1-routine (copy scopy) (n x incx y incy) ((x-offset 0) (y-offset 0)) x
@@ -279,7 +280,8 @@ sees NAME, the routine called, and ELEMENT, the element type name."
     (check-disjoint name ys xs)
     (unless (zerop n)
       (funcall (level1-kernel "COPY" element)
-               x y n (span-start xs) incx (span-start ys) incy :grid n :device device))
+               (span-array xs) (span-array ys) n (span-start xs) incx (span-start ys) incy
+               :grid n :device device))
     y))
 
 (define-level1-routine (swap sswap) (n x incx y incy) ((x-offset 0) (y-offset 0)) x
@@ -290,7 +292,8 @@ sees NAME, the routine called, and ELEMENT, the element type name."
     (check-disjoint name xs ys)
     (unless (zerop n)
       (funcall (level1-kernel "SWAP" element)
-               x y n (span-start xs) incx (span-start ys) incy :grid n :device device))
+               (span-array xs) (span-array ys) n (span-start xs) incx (span-start ys) incy
+               :grid n :device device))
     (values x y)))
 
 (defun group-count (n)
@@ -315,7 +318,7 @@ sees NAME, the routine called, and ELEMENT, the element type name."
         (let ((groups (group-count n)))
           (with-partials (partials device groups)
             (funcall (level1-kernel "DOT" element)
-                     x y partials n (span-start xs) incx (span-start ys) incy
+                     (span-array xs) (span-array ys) partials n (span-start xs) incx (span-start ys) incy
                      :grid (* groups +group-size+) :group +group-size+ :device device)
             (float (sum-partials partials) 1f0))))))
 
@@ -328,7 +331,7 @@ sees NAME, the routine called, and ELEMENT, the element type name."
         (let ((groups (group-count n)))
           (with-partials (partials device groups)
             (funcall (level1-kernel "ASUM" element)
-                     x partials n (span-start xs) incx
+                     (span-array xs) partials n (span-start xs) incx
                      :grid (* groups +group-size+) :group +group-size+ :device device)
             (float (sum-partials partials) 1f0))))))
 
@@ -342,7 +345,7 @@ sees NAME, the routine called, and ELEMENT, the element type name."
           (with-partials (scales device groups)
             (with-partials (squares device groups)
               (funcall (level1-kernel "NRM2" element)
-                       x scales squares n (span-start xs) incx
+                       (span-array xs) scales squares n (span-start xs) incx
                        :grid (* groups +group-size+) :group +group-size+ :device device)
               (let ((scale 0d0) (ssq 1d0))
                 (map nil (lambda (s q)
@@ -364,7 +367,7 @@ sees NAME, the routine called, and ELEMENT, the element type name."
           (with-partials (bests device groups)
             (with-partials (indices device groups u32)
               (funcall (level1-kernel "IAMAX" element)
-                       x bests indices n (span-start xs) incx
+                       (span-array xs) bests indices n (span-start xs) incx
                        :grid (* groups +group-size+) :group +group-size+ :device device)
               (let ((best -1f0) (found 0))
                 (map nil (lambda (b i)
@@ -385,7 +388,7 @@ sees NAME, the routine called, and ELEMENT, the element type name."
         (let ((groups (group-count n)))
           (with-partials (his device groups)
             (with-partials (los device groups)
-              (%dsdot x y his los n (span-start xs) incx (span-start ys) incy
+              (%dsdot (span-array xs) (span-array ys) his los n (span-start xs) incx (span-start ys) incy
                       :grid (* groups +group-size+) :group +group-size+ :device device)
               (+ (sum-partials his) (sum-partials los))))))))
 

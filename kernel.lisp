@@ -135,7 +135,12 @@ A leading (declare (precise-math)) compiles the kernel without fast math."
               (refuse "the array is on another device"))
             (unless (eq (gpu-array-element-type value) (pointer-type-pointee type))
               (refuse "the array holds ~a" (type-description (gpu-array-element-type value))))
-            (list :buffer (or (array-buffer value) (refuse "the array was freed"))))
+            (let ((offset (array-byte-offset value))
+                  (alignment (device-offset-alignment device (pointer-type-space type))))
+              (unless (zerop (mod offset alignment))
+                (refuse "the view starts ~d bytes into its array, not a multiple of ~d"
+                        offset alignment))
+              (list :buffer (or (array-buffer value) (refuse "the array was freed")) offset)))
            (:shared
             (unless (typep value '(integer 0))
               (refuse "expected an element count, got ~s" value))

@@ -286,16 +286,17 @@ Valid until BUFFER is released. A private buffer has no host address."
   (synchronize-device (buffer-device buffer))
   (%buffer-contents (live-handle buffer)))
 
-(defun check-fits (buffer elements stride)
-  (when (> (* elements stride) (buffer-size buffer))
-    (fail "~d elements of ~d bytes do not fit a ~d-byte buffer" elements stride (buffer-size buffer))))
+(defun check-fits (buffer elements stride offset)
+  (when (> (+ offset (* elements stride)) (buffer-size buffer))
+    (fail "~d elements of ~d bytes from byte ~d do not fit a ~d-byte buffer"
+          elements stride offset (buffer-size buffer))))
 
-(defun transfer-elements (buffer sequence count stride)
-  "The number of elements SEQUENCE's components make, checked against BUFFER."
+(defun transfer-elements (buffer sequence count stride offset)
+  "The number of elements SEQUENCE's components make, checked against BUFFER from byte OFFSET."
   (unless (zerop (mod (length sequence) count))
     (fail "~d components are not whole elements of ~d components" (length sequence) count))
   (let ((elements (/ (length sequence) count)))
-    (check-fits buffer elements stride)
+    (check-fits buffer elements stride offset)
     elements))
 
 (defun component-offsets (count stride width)
@@ -325,33 +326,39 @@ COUNT components, STRIDE bytes apart."
                 (make-buffer device (max 4096 (ash 1 (integer-length (1- bytes))))
                              :storage :shared))))))
 
-(defun upload-private (buffer bytes store)
-  "Fill the first BYTES of private BUFFER by calling STORE on the host address of the staging buffer.
-Returns once the copy is queued."
-  (let ((device (buffer-device buffer))
-        (aligned (align-4 bytes)))
-    (when (plusp aligned)
+(defun upload-private (buffer offset bytes store)
+  "Fill BYTES of private BUFFER from byte OFFSET by calling STORE on the host address in the staging
+buffer where they start. Returns once the copy is queued. Blits move whole 4-byte words, so the
+bytes around the range are read back and written unchanged."
+  (let* ((device (buffer-device buffer))
+         (start (* 4 (floor offset 4)))
+         (end (align-4 (+ offset bytes)))
+         (window (- end start)))
+    (when (plusp bytes)
       (bt:with-lock-held ((device-staging-lock device))
         (synchronize-device device)
-        (let* ((staging (staging-buffer device aligned))
+        (let* ((staging (staging-buffer device window))
                (pointer (%buffer-contents (live-handle staging))))
-          (cffi:foreign-funcall "memset" :pointer pointer :int 0 :unsigned-long aligned :pointer)
-          (when (< bytes aligned)
-            (blit-copy device buffer (- aligned 4) staging (- aligned 4) 4)
+          (cffi:foreign-funcall "memset" :pointer pointer :int 0 :unsigned-long window :pointer)
+          (when (or (/= offset start) (< (+ offset bytes) end))
+            (blit-copy device buffer start staging 0 4)
+            (blit-copy device buffer (- end 4) staging (- window 4) 4)
             (synchronize-device device))
-          (funcall store pointer)
-          (blit-copy device staging 0 buffer 0 aligned))))))
+          (funcall store (cffi:inc-pointer pointer (- offset start)))
+          (blit-copy device staging 0 buffer start window))))))
 
-(defun download-private (buffer bytes load)
-  "Call LOAD on the host address of the staging buffer holding the first BYTES of private BUFFER."
-  (let ((device (buffer-device buffer))
-        (aligned (align-4 bytes)))
-    (when (plusp aligned)
+(defun download-private (buffer offset bytes load)
+  "Call LOAD on the host address in the staging buffer of the BYTES of private BUFFER from byte OFFSET."
+  (let* ((device (buffer-device buffer))
+         (start (* 4 (floor offset 4)))
+         (window (- (align-4 (+ offset bytes)) start)))
+    (when (plusp bytes)
       (bt:with-lock-held ((device-staging-lock device))
-        (let ((staging (staging-buffer device aligned)))
-          (blit-copy device buffer 0 staging 0 aligned)
+        (let ((staging (staging-buffer device window)))
+          (blit-copy device buffer start staging 0 window)
           (synchronize-device device)
-          (funcall load (%buffer-contents (live-handle staging))))))))
+          (funcall load (cffi:inc-pointer (%buffer-contents (live-handle staging))
+                                          (- offset start))))))))
 
 (defun raw-lisp-type (name)
   "The Lisp type whose vectors hold scalar NAME exactly as a buffer does, or NIL if values need
@@ -397,12 +404,12 @@ of elements of COUNT components laid out STRIDE bytes apart."
             (copy (* element stride) (* element 3 width) (* 3 width)))
           (copy 0 0 (* (length vector) width))))))
 
-(defun copy-to-buffer (buffer sequence &key (element-type 'gpu:f32))
-  "Store the numbers in SEQUENCE in BUFFER from its start as ELEMENT-TYPE, a scalar or vector type.
+(defun copy-to-buffer (buffer sequence &key (element-type 'gpu:f32) (offset 0))
+  "Store the numbers in SEQUENCE in BUFFER from byte OFFSET as ELEMENT-TYPE, a scalar or vector type.
 A vector's components are consecutive in SEQUENCE. A simple vector specialised to the Lisp type of
 the elements' scalar (e.g. single-float for f32) is copied in bulk."
   (multiple-value-bind (name count stride) (element-layout element-type)
-    (let ((elements (transfer-elements buffer sequence count stride))
+    (let ((elements (transfer-elements buffer sequence count stride offset))
           (width (element-bytes name)))
       (flet ((store (pointer)
                (if (raw-vector-p sequence name)
@@ -417,16 +424,16 @@ the elements' scalar (e.g. single-float for f32) is copied in bulk."
                                         (funcall encode value)))
                             sequence))))))
         (if (eq (buffer-storage buffer) :private)
-            (upload-private buffer (* elements stride) #'store)
-            (store (buffer-pointer buffer))))))
+            (upload-private buffer offset (* elements stride) #'store)
+            (store (cffi:inc-pointer (buffer-pointer buffer) offset))))))
   buffer)
 
-(defun copy-from-buffer (buffer sequence &key (element-type 'gpu:f32))
-  "Fill SEQUENCE with the components of elements of ELEMENT-TYPE read from the start of BUFFER.
+(defun copy-from-buffer (buffer sequence &key (element-type 'gpu:f32) (offset 0))
+  "Fill SEQUENCE with the components of elements of ELEMENT-TYPE read from byte OFFSET of BUFFER.
 A simple vector specialised as for COPY-TO-BUFFER is filled in bulk; any other specialised vector
 receives the values coerced to its element type."
   (multiple-value-bind (name count stride) (element-layout element-type)
-    (let ((elements (transfer-elements buffer sequence count stride))
+    (let ((elements (transfer-elements buffer sequence count stride offset))
           (width (element-bytes name)))
       (flet ((fetch (pointer)
                (if (raw-vector-p sequence name)
@@ -438,8 +445,8 @@ receives the values coerced to its element type."
                                  (lambda ()
                                    (funcall decode (cffi:mem-ref pointer ctype (funcall next))))))))))
         (if (eq (buffer-storage buffer) :private)
-            (download-private buffer (* elements stride) #'fetch)
-            (fetch (buffer-pointer buffer))))))
+            (download-private buffer offset (* elements stride) #'fetch)
+            (fetch (cffi:inc-pointer (buffer-pointer buffer) offset))))))
   sequence)
 
 ;;; Libraries and pipelines
@@ -507,7 +514,8 @@ compiler's log on failure."
 (defun dispatch (pipeline arguments grid &key group wait)
   "Queue PIPELINE over GRID threads on its device and return NIL; with WAIT, then wait for the
 device's dispatches. Dispatches run in order. A failure in one is signalled by the next wait.
-ARGUMENTS are in kernel parameter order: a buffer, (:bytes type value) or (:threadgroup bytes)."
+ARGUMENTS are in kernel parameter order: a buffer, (:buffer buffer byte-offset), (:bytes type value)
+or (:threadgroup bytes)."
   (let* ((device (pipeline-device pipeline))
          (sizes (grid-sizes grid))
          (group (grid-sizes (or group (default-group pipeline sizes))))
@@ -529,6 +537,10 @@ ARGUMENTS are in kernel parameter order: a buffer, (:bytes type value) or (:thre
                                (cffi:mem-aref lengths :unsigned-long index) 0))
                         (cons
                          (ecase (first argument)
+                           (:buffer
+                            (setf (cffi:mem-aref kinds :int index) 0
+                                  (cffi:mem-aref values :pointer index) (live-handle (second argument))
+                                  (cffi:mem-aref lengths :unsigned-long index) (third argument)))
                            (:bytes
                             (multiple-value-bind (pointer size)
                                 (pack-bytes (second argument) (third argument))
