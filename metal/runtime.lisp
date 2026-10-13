@@ -134,6 +134,12 @@
     (gpu:i8 :int8) (gpu:i16 :int16) (gpu:i32 :int32) (gpu:i64 :int64)
     ((gpu:u8 gpu:bool) :uint8) (gpu:u32 :uint32) (gpu:u64 :uint64)))
 
+(defmacro with-constant-ctype ((variable name) &body body)
+  "Run BODY with VARIABLE a literal C type keyword, so CFFI:MEM-REF compiles to a direct access."
+  `(ecase (element-ctype ,name)
+     ,@(loop for ctype in '(:uint8 :int8 :uint16 :int16 :uint32 :int32 :uint64 :int64 :float :double)
+             collect `(,ctype ,@(subst ctype variable body)))))
+
 (defun element-bytes (name)
   (cffi:foreign-type-size (element-ctype name)))
 
@@ -365,6 +371,14 @@ encoding or the implementation stores that type boxed."
   (let ((type (raw-lisp-type name)))
     (and type (typep sequence `(simple-array ,type (*))))))
 
+(defun sequence-decoder (sequence name)
+  "A function turning the bits of scalar NAME into a value SEQUENCE can hold."
+  (let ((decode (element-decoder name))
+        (type (if (vectorp sequence) (array-element-type sequence) t)))
+    (if (eq type t)
+        decode
+        (lambda (raw) (coerce (funcall decode raw) type)))))
+
 (defun copy-bytes (target source length)
   (cffi:foreign-funcall "memcpy" :pointer target :pointer source :unsigned-long length :pointer))
 
@@ -393,13 +407,15 @@ the elements' scalar (e.g. single-float for f32) is copied in bulk."
       (flet ((store (pointer)
                (if (raw-vector-p sequence name)
                    (bulk-copy pointer sequence count stride width t)
-                   (let ((ctype (element-ctype name))
-                         (encode (element-encoder name))
-                         (next (component-offsets count stride width)))
-                     (map nil (lambda (value)
-                                (setf (cffi:mem-ref pointer ctype (funcall next))
-                                      (funcall encode value)))
-                          sequence)))))
+                   ;; TODO: one funcall of the encoder per value; loops typed on the source
+                   ;; element would be ~25x faster (#60), and f16/bf16 need a converting loop (#61)
+                   (with-constant-ctype (ctype name)
+                     (let ((encode (element-encoder name))
+                           (next (component-offsets count stride width)))
+                       (map nil (lambda (value)
+                                  (setf (cffi:mem-ref pointer ctype (funcall next))
+                                        (funcall encode value)))
+                            sequence))))))
         (if (eq (buffer-storage buffer) :private)
             (upload-private buffer (* elements stride) #'store)
             (store (buffer-pointer buffer))))))
@@ -407,19 +423,20 @@ the elements' scalar (e.g. single-float for f32) is copied in bulk."
 
 (defun copy-from-buffer (buffer sequence &key (element-type 'gpu:f32))
   "Fill SEQUENCE with the components of elements of ELEMENT-TYPE read from the start of BUFFER.
-A simple vector specialised as for COPY-TO-BUFFER is filled in bulk."
+A simple vector specialised as for COPY-TO-BUFFER is filled in bulk; any other specialised vector
+receives the values coerced to its element type."
   (multiple-value-bind (name count stride) (element-layout element-type)
     (let ((elements (transfer-elements buffer sequence count stride))
           (width (element-bytes name)))
       (flet ((fetch (pointer)
                (if (raw-vector-p sequence name)
                    (bulk-copy pointer sequence count stride width nil)
-                   (let ((ctype (element-ctype name))
-                         (decode (element-decoder name))
-                         (next (component-offsets count stride width)))
-                     (map-into sequence
-                               (lambda ()
-                                 (funcall decode (cffi:mem-ref pointer ctype (funcall next)))))))))
+                   (with-constant-ctype (ctype name)
+                     (let ((decode (sequence-decoder sequence name))
+                           (next (component-offsets count stride width)))
+                       (map-into sequence
+                                 (lambda ()
+                                   (funcall decode (cffi:mem-ref pointer ctype (funcall next))))))))))
         (if (eq (buffer-storage buffer) :private)
             (download-private buffer (* elements stride) #'fetch)
             (fetch (buffer-pointer buffer))))))

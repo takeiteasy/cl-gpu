@@ -177,6 +177,8 @@
           (is (equalp expected (read-back buffer 'gpu:f32 4))))
         (let ((list (list 0 0 0 0)))
           (is (equal '(1.0 2.0 3.0 4.0) (metal:copy-from-buffer buffer list))))
+        (let ((doubles (make-array 4 :element-type 'double-float)))
+          (is (equalp #(1.0d0 2.0d0 3.0d0 4.0d0) (metal:copy-from-buffer buffer doubles))))
         (metal:copy-to-buffer buffer '(1 2 3 4) :element-type 'gpu:f64)
         (let ((doubles (make-array 4 :element-type 'double-float)))
           (is (equalp #(1.0d0 2.0d0 3.0d0 4.0d0)
