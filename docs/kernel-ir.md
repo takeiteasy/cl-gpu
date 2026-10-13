@@ -62,7 +62,7 @@ Lisp forms yield values; C statements do not. Lowering splits them.
 | `if` with branches that need statements | a result variable assigned in each branch |
 | `let`, `progn` | its statements, then its last form |
 | `block` | a loop that runs once, with a result variable |
-| `setf` | the assignment, then the variable |
+| `setf`, `incf`, `decf` | the assignment, then the variable |
 | atomic call | a variable bound to the call |
 
 Operands keep left-to-right order: an operand evaluated before a later operand's statements is bound to a variable first. `and` and `or` short-circuit; an operand that needs statements runs only when reached.

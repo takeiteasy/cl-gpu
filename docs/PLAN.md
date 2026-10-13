@@ -53,7 +53,6 @@ Kernels print as Metal source and run through [`define-kernel`](kernels.md) on t
 
 - No `loop`, `do`, `tagbody` or `go` ([kernel forms](kernel-forms.md)).
 - No `flet` or `labels` ([#8](https://github.com/communal-software/cl-gpu/issues/8)).
-- `incf` and `decf` through a symbol macro evaluate the place's subforms twice ([#9](https://github.com/communal-software/cl-gpu/issues/9)).
 - Vectors lack swizzles and scalar broadcast ([#10](https://github.com/communal-software/cl-gpu/issues/10)).
 - No local arrays or static shared memory ([#11](https://github.com/communal-software/cl-gpu/issues/11)).
 - CUDA needs operators for vector types ([#12](https://github.com/communal-software/cl-gpu/issues/12)).

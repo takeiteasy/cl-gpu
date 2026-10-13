@@ -245,6 +245,24 @@
   (let ((kernel (lower-text "(incf (aref p (global-id 0)) 2)" :arguments "((p (ptr u32 :global)))")))
     (is (= 1 (length (ir-nodes-of-type 'gpu:ir-intrinsic kernel))))))
 
+(test incf-through-symbol-macro-evaluates-place-subforms-once
+  (let ((kernel (lower-text "(symbol-macrolet ((x (aref p (global-id 0)))) (incf x 2))"
+                            :arguments "((p (ptr u32 :global)))")))
+    (is (= 1 (length (ir-nodes-of-type 'gpu:ir-intrinsic kernel))))))
+
+(test incf-on-a-vector-component-writes-the-vector
+  (let* ((kernel (lower-text "(let ((v (vec f32 1.0 2.0 3.0))) (incf (aref v 0) 1.5))"))
+         (assign (first (ir-nodes-of-type 'gpu:ir-assign kernel))))
+    (is (typep (gpu:ir-assign-target assign) 'gpu:ir-component))
+    (is (typep (gpu:ir-component-base (gpu:ir-assign-target assign)) 'gpu:ir-var))))
+
+(test incf-in-value-position-returns-the-new-value
+  (let ((kernel (lower-text "(setf (aref p 0) (incf (aref p 1)))" :arguments "((p (ptr i32 :global)))")))
+    (is (= 2 (length (ir-nodes-of-type 'gpu:ir-assign kernel))))))
+
+(test incf-needs-a-numeric-place
+  (signals gpu:kernel-type-error (lower-text "(let ((b t)) (incf b))")))
+
 (test value-statements-have-no-value
   (signals gpu:kernel-type-error (lower-text "(let ((r (while t (barrier)))) r)"))
   (signals gpu:kernel-type-error (lower-text "(let ((r (progn))) r)"))

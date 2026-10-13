@@ -28,23 +28,6 @@
 (define-kernel-macro return (&optional (value nil value-p))
   `(return-from nil ,@(when value-p (list value))))
 
-(defun expand-modify (operator place delta)
-  "Expand `(setf PLACE (OPERATOR PLACE DELTA))`, evaluating the place's subforms once."
-  (if (consp place)
-      (let* ((temporaries (loop for nil in (rest place) collect (gensym "ARG")))
-             (target `(,(first place) ,@temporaries))
-             (step (if (atom delta) delta (gensym "DELTA"))))
-        `(let (,@(mapcar #'list temporaries (rest place))
-               ,@(unless (eq step delta) `((,step ,delta))))
-           (setf ,target (,operator ,target ,step))))
-      `(setf ,place (,operator ,place ,delta))))
-
-(define-kernel-macro incf (place &optional (delta 1))
-  (expand-modify '+ place delta))
-
-(define-kernel-macro decf (place &optional (delta 1))
-  (expand-modify '- place delta))
-
 (define-kernel-macro dotimes ((variable count &rest result) &body body)
   (when result
     (error "result forms are not supported"))

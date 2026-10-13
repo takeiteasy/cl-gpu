@@ -184,6 +184,22 @@
 (define-walker setf (cst env args)
   (walk-assignments cst env args nil))
 
+;;; incf and decf resolve the place here, so symbol macros and macros are expanded first.
+(defun walk-modify (cst env args operator)
+  (check-arg-count cst args 1 2)
+  (make-modify :target (walk-place (first args) env)
+               :operator operator
+               :delta (if (second args)
+                          (walk (second args) env)
+                          (make-literal :value 1 :source *current-source*))
+               :source *current-source*))
+
+(define-walker incf (cst env args)
+  (walk-modify cst env args '+))
+
+(define-walker decf (cst env args)
+  (walk-modify cst env args '-))
+
 (define-walker progn (cst env args)
   (make-progn-node :body (walk-all args env) :source *current-source*))
 

@@ -89,19 +89,30 @@
   (is (equal '(1 7) (error-position-of gpu:kernel-syntax-error
                       (walk-text "(setq (aref p 0) 1)" :variables '("p"))))))
 
-(test incf-evaluates-place-subforms-once
-  (let* ((node (walk-text "(incf (aref p (f i)) 2)" :variables '("p" "i")))
-         (calls (nodes-of-type 'gpu:call node)))
-    (is (= 1 (count (ksym "f") calls :key #'gpu:call-operator)))
-    (is (typep node 'gpu:let-node))
-    (is (eq 'aref (gpu:call-operator
-                   (gpu:assign-target (first (gpu:let-node-body node))))))))
+(test incf-builds-a-modify-node
+  (let ((node (walk-text "(incf (aref p (f i)) 2)" :variables '("p" "i"))))
+    (is (typep node 'gpu:modify))
+    (is (eq '+ (gpu:modify-operator node)))
+    (is (eq 'aref (gpu:call-operator (gpu:modify-target node))))
+    (is (= 1 (count (ksym "f") (nodes-of-type 'gpu:call node) :key #'gpu:call-operator)))))
+
+(test incf-through-symbol-macro-reaches-place
+  (let ((node (walk-text "(symbol-macrolet ((x (aref p (f i)))) (incf x))" :variables '("p" "i"))))
+    (is (typep node 'gpu:modify))
+    (is (eq 'aref (gpu:call-operator (gpu:modify-target node))))
+    (is (= 1 (count (ksym "f") (nodes-of-type 'gpu:call node) :key #'gpu:call-operator)))))
+
+(test incf-through-macrolet-reaches-place
+  (let ((node (walk-text "(macrolet ((cell (k) `(aref p ,k))) (decf (cell (f i)) 3))"
+                         :variables '("p" "i"))))
+    (is (eq '- (gpu:modify-operator node)))
+    (is (eq 'aref (gpu:call-operator (gpu:modify-target node))))))
 
 (test decf-on-a-variable
   (let* ((node (walk-text "(let ((a 3)) (decf a))"))
-         (assign (first (gpu:let-node-body node))))
-    (is (typep assign 'gpu:assign))
-    (is (eq '- (gpu:call-operator (gpu:assign-value assign))))))
+         (modify (first (gpu:let-node-body node))))
+    (is (typep modify 'gpu:modify))
+    (is (eq '- (gpu:modify-operator modify)))))
 
 (test return-targets-the-loop-block
   (let* ((node (walk-text "(dotimes (i 4) (return i))"))
@@ -132,7 +143,7 @@
     (is (gpu:loop-node-binding for-node))
     (is (typep (gpu:loop-node-init for-node) 'gpu:literal))
     (is (typep (gpu:loop-node-test for-node) 'gpu:call))
-    (is (typep (gpu:loop-node-step for-node) 'gpu:assign))
+    (is (typep (gpu:loop-node-step for-node) 'gpu:modify))
     (is (null (gpu:loop-node-binding while-node)))
     (is (null (gpu:loop-node-step while-node)))))
 

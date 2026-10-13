@@ -27,6 +27,7 @@ Kernels are Lisp forms. `read-kernel` reads text into forms that carry source lo
 | `(let ((v init) ...) body)` | `init` sees the outer scope |
 | `(let* ((v init) ...) body)` | each `init` sees the earlier variables |
 | `(setq v value ...)`, `(setf place value ...)` | pairs become one assign each. A place is a variable, a symbol macro or a call such as `(aref p i)` |
+| `(incf place [delta])`, `(decf place [delta])` | the place's subforms are evaluated once, including through symbol macros and macros |
 | `(if test then [else])` | |
 | `(progn form ...)` | |
 | `(block name form ...)`, `(return-from name [value])` | |
@@ -47,7 +48,6 @@ Kernels are Lisp forms. `read-kernel` reads text into forms that carry source lo
 | `case` | `let` and `cond` over `=` tests. Keys are numbers |
 | `dotimes` | `for` over `0` to the count, evaluated once. No result form |
 | `return` | `return-from nil` |
-| `incf`, `decf` | `setf`. The subforms of a call place are evaluated once |
 
 `and` and `or` stay calls, so the IR can print `&&` and `||`.
 
@@ -86,6 +86,3 @@ Both carry a message, the form and a `source-location` (file, line and column, 1
 
 - Standard CL forms not listed above are errors, including `loop`, `do`, `tagbody`, `go`, `function`, `flet` and `labels`.
 - Other CL macros are errors. Define a kernel macro instead.
-- `incf` and `decf` through a symbol macro evaluate the place's subforms twice.[^1]
-
-[^1]: `(incf x)` with `x` a symbol macro for `(aref p (f i))` expands to `(setf x (+ x 1))`. Writing the place as a call evaluates its subforms once.

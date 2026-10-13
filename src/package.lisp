@@ -90,6 +90,7 @@
    #:let-node #:let-node-sequential #:let-node-bindings #:let-node-inits
    #:let-node-declarations #:let-node-body
    #:assign #:assign-target #:assign-value
+   #:modify #:modify-target #:modify-operator #:modify-delta
    #:if-node #:if-node-test #:if-node-then #:if-node-else
    #:progn-node #:progn-node-body
    #:loop-node #:loop-node-binding #:loop-node-init #:loop-node-test

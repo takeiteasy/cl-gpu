@@ -226,6 +226,7 @@ needed, and the type. Non-constant nodes decide the type; constants adopt it."
                  (var-ref (var-expr (binding-variable (var-ref-binding node))))
                  (let-node (lower-let node t hint))
                  (assign (lower-assign node t))
+                 (modify (lower-modify node t))
                  (if-node (lower-if node t hint))
                  (progn-node (lower-body (progn-node-body node) t hint))
                  (block-node (lower-block node t hint))
@@ -243,6 +244,7 @@ needed, and the type. Non-constant nodes decide the type; constants adopt it."
       ((or literal var-ref) nil)
       (let-node (lower-let node nil nil))
       (assign (lower-assign node nil))
+      (modify (lower-modify node nil))
       (if-node (lower-if node nil nil))
       (progn-node (lower-body (progn-node-body node) nil nil))
       (block-node (lower-block node nil nil))
@@ -307,6 +309,18 @@ needed, and the type. Non-constant nodes decide the type; constants adopt it."
       (type-fail node "this form is not a place"))
     expr))
 
+(defun emit-store (place value want-value)
+  "Emit the assignment of VALUE to PLACE. When WANT-VALUE, return an expression for the new value."
+  (cond ((not want-value)
+         (emit (make-ir-assign :target place :value value))
+         nil)
+        ((ir-var-p place)
+         (emit (make-ir-assign :target place :value value))
+         (var-expr (ir-var-variable place)))
+        (t (let ((temp (spill value)))
+             (emit (make-ir-assign :target place :value temp))
+             temp))))
+
 (defun lower-assign (node want-value)
   (let* ((place (lower-place (assign-target node)))
          (type (ir-expr-type place)))
@@ -318,15 +332,22 @@ needed, and the type. Non-constant nodes decide the type; constants adopt it."
       (when statements
         (setf place (stabilise-place place)))
       (mapc #'emit statements)
-      (cond ((not want-value)
-             (emit (make-ir-assign :target place :value value))
-             nil)
-            ((ir-var-p place)
-             (emit (make-ir-assign :target place :value value))
-             (var-expr (ir-var-variable place)))
-            (t (let ((temp (spill value)))
-                 (emit (make-ir-assign :target place :value temp))
-                 temp))))))
+      (emit-store place value want-value))))
+
+(defun lower-modify (node want-value)
+  (let* ((place (stabilise-place (lower-place (modify-target node))))
+         (type (ir-expr-type place))
+         (operator (modify-operator node)))
+    (unless (numeric-scalar-p type)
+      (type-fail node "~(~a~) needs a numeric place, got ~a"
+                 (if (eq operator '+) 'incf 'decf) (type-description type)))
+    (let ((delta (lower-value (modify-delta node) type)))
+      (unless (eq (ir-expr-type delta) type)
+        (type-fail (modify-delta node) "expected ~a, got ~a"
+                   (type-description type) (type-description (ir-expr-type delta))))
+      (emit-store place
+                  (make-op (if (eq operator '+) :add :sub) (list place delta) type)
+                  want-value))))
 
 ;;; if
 

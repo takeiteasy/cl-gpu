@@ -25,6 +25,9 @@
 ;;; TARGET is a VAR-REF or a CALL (an array or field place).
 (defstruct (assign (:include node)) target value)
 
+;;; OPERATOR is + or -. TARGET is read and written, its subforms evaluated once.
+(defstruct (modify (:include node)) target operator delta)
+
 (defstruct (if-node (:include node)) test then else)
 (defstruct (progn-node (:include node)) body)
 
@@ -42,6 +45,7 @@
       ((or binding literal var-ref) nil)
       (let-node (append (remove nil (let-node-inits node)) (let-node-body node)))
       (assign (present (assign-target node) (assign-value node)))
+      (modify (list (modify-target node) (modify-delta node)))
       (if-node (present (if-node-test node) (if-node-then node) (if-node-else node)))
       (progn-node (progn-node-body node))
       (loop-node (append (present (loop-node-init node) (loop-node-test node)
