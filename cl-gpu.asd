@@ -32,7 +32,8 @@
   :author "George Watson <gigolo@hotmail.co.uk>"
   :license "GPL-3.0-only"
   :version "0.0.0"
-  :depends-on ("eclector" "eclector-concrete-syntax-tree" "concrete-syntax-tree")
+  :depends-on ("eclector" "eclector-concrete-syntax-tree" "concrete-syntax-tree"
+               "trivial-garbage")
   :serial t
   :components ((:module "src"
                 :serial t
@@ -48,7 +49,10 @@
                              (:file "intrinsics")
                              (:file "lower")
                              (:file "printer")
-                             (:file "msl"))))
+                             (:file "msl")
+                             (:file "device")
+                             (:file "array")
+                             (:file "kernel"))))
   :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/tests"))))
 
 (asdf:defsystem "cl-gpu/tests"
@@ -62,7 +66,8 @@
                (:file "tests/intrinsics")
                (:file "tests/lower")
                (:file "tests/printer")
-               (:file "tests/msl"))
+               (:file "tests/msl")
+               (:file "tests/kernel"))
   :perform (asdf:test-op (op component)
              (declare (ignore op component))
              (unless (uiop:symbol-call :cl-gpu/tests :run-tests)
@@ -78,7 +83,8 @@
                 :components ((:file "package")
                              (:objc-dylib "shim")
                              (:file "ffi")
-                             (:file "runtime"))))
+                             (:file "runtime")
+                             (:file "backend"))))
   :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/metal/tests"))))
 
 (asdf:defsystem "cl-gpu/metal/tests"

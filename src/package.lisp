@@ -1,6 +1,16 @@
 (defpackage #:cl-gpu
   (:use #:cl)
+  (:local-nicknames (#:tg #:trivial-garbage))
   (:export
+   ;; Kernels and arrays
+   #:define-kernel #:find-kernel #:kernel-ir
+   #:gpu-array #:make-gpu-array #:to-device #:from-device #:free #:with-gpu-array
+   #:gpu-array-length #:gpu-array-element-type #:gpu-array-device
+   #:wait
+   ;; Backends
+   #:*device* #:current-device #:register-backend
+   #:device-target #:device-allocate #:device-free #:device-store #:device-load
+   #:device-prepare #:device-launch
    ;; Reader
    #:read-kernel
    #:read-kernel-from-string
@@ -65,6 +75,7 @@
    #:source-location-end
    #:source-location-line
    #:source-location-column
+   #:gpu-error #:gpu-error-message
    #:kernel-error
    #:kernel-error-form
    #:kernel-error-location

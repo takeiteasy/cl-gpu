@@ -4,7 +4,7 @@
 
 S-expression GPU kernel DSL for Common Lisp with Metal, CUDA and OpenCL backends.
 
-See the [plan](docs/PLAN.md) for status and phases. For kernels: [forms](docs/kernel-forms.md), [types](docs/types.md), [intrinsics](docs/intrinsics.md), the [IR](docs/kernel-ir.md), the [printers](docs/printers.md) and the [Metal runtime](docs/metal.md).
+See the [plan](docs/PLAN.md) for status and phases. To run kernels, see [kernels and arrays](docs/kernels.md). For kernel internals: [forms](docs/kernel-forms.md), [types](docs/types.md), [intrinsics](docs/intrinsics.md), the [IR](docs/kernel-ir.md), the [printers](docs/printers.md) and the [Metal runtime](docs/metal.md).
 
 ## Tests
 

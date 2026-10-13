@@ -8,10 +8,11 @@
 (defmacro define-kernel-macro (name lambda-list &body body)
   "Define a macro usable inside kernels. BODY returns the expansion as a form."
   (let ((whole (gensym "WHOLE")))
-    `(setf (gethash ',name *kernel-macros*)
-           (lambda (,whole)
-             (destructuring-bind ,lambda-list (cdr ,whole)
-               ,@body)))))
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       (setf (gethash ',name *kernel-macros*)
+             (lambda (,whole)
+               (destructuring-bind ,lambda-list (cdr ,whole)
+                 ,@body))))))
 
 ;;; Each namespace is an alist from name to entry, searched innermost first.
 ;;; Variable entries are a BINDING or a (:symbol-macro . expansion-cst).

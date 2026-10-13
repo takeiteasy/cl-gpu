@@ -30,3 +30,11 @@
 (define-condition kernel-type-error (kernel-error) ())
 
 (define-condition kernel-target-error (kernel-error) ())
+
+(define-condition gpu-error (error)
+  ((message :initarg :message :reader gpu-error-message))
+  (:report (lambda (condition stream)
+             (write-string (gpu-error-message condition) stream))))
+
+(defun gpu-fail (control &rest arguments)
+  (error 'gpu-error :message (apply #'format nil control arguments)))

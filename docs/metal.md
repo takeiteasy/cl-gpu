@@ -1,6 +1,6 @@
 # Metal runtime
 
-`cl-gpu/metal` compiles Metal source and runs it on the GPU. It needs macOS and Xcode's command line tools; loading the system builds a small Objective-C shim with `clang`.
+`cl-gpu/metal` compiles Metal source and runs it on the GPU. It is the layer under [`define-kernel`](kernels.md), which most code uses instead. It needs macOS and Xcode's command line tools; loading the system builds a small Objective-C shim with `clang`.
 
 ```lisp
 (asdf:load-system "cl-gpu/metal")

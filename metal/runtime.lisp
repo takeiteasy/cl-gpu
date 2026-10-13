@@ -2,10 +2,10 @@
 
 ;;; Conditions
 
-(define-condition metal-error (error)
-  ((message :initarg :message :reader metal-error-message))
-  (:report (lambda (condition stream)
-             (write-string (metal-error-message condition) stream))))
+(define-condition metal-error (gpu:gpu-error) ())
+
+(defun metal-error-message (condition)
+  (gpu:gpu-error-message condition))
 
 (define-condition metal-compile-error (metal-error) ())
 
@@ -332,7 +332,7 @@ ARGUMENTS are in kernel parameter order: a buffer, (:bytes type value) or (:thre
   (or (null (handle command))
       (/= 0 (%command-done-p (handle command)))))
 
-(defun wait (command)
+(defmethod wait ((command metal-command))
   "Block until COMMAND finishes. Signals METAL-ERROR if it failed. The command is released."
   (when (handle command)
     (unwind-protect

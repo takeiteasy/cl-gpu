@@ -399,10 +399,17 @@
 
 (defparameter *printer-classes* '(:metal msl-printer))
 
-(defun kernel-source (kernel target)
-  "The source of the IR-KERNEL KERNEL for TARGET, as a string."
+(defun make-printer (target)
   (let ((class (getf *printer-classes* target)))
     (unless class
       (target-fail "no printer for target ~s" target))
-    (with-output-to-string (stream)
-      (print-kernel kernel (make-instance class) stream))))
+    (make-instance class)))
+
+(defun kernel-source (kernel target)
+  "The source of the IR-KERNEL KERNEL for TARGET, as a string."
+  (with-output-to-string (stream)
+    (print-kernel kernel (make-printer target) stream)))
+
+(defun kernel-entry-name (kernel target)
+  "The name of the entry function that KERNEL's source defines for TARGET."
+  (sanitised-kernel-name (make-printer target) kernel))

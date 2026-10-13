@@ -163,3 +163,72 @@ kernel void present() {}")
         (is (metal:command-done-p command))
         (metal:wait command)
         (is (equalp #(5) (read-back out 'gpu:u32 1)))))))
+
+;;; define-kernel and GPU arrays
+
+(defun eval-kernel (text)
+  (let ((*package* (find-package '#:cl-gpu/metal/tests/kernel)))
+    (eval (read-from-string text))))
+
+(defun kernel-function (name)
+  (symbol-function (intern (string-upcase name) '#:cl-gpu/metal/tests/kernel)))
+
+(test define-kernel-runs-saxpy
+  (eval-kernel "(define-kernel saxpy ((out (ptr f32 :global)) (x (ptr f32 :global))
+                                      (y (ptr f32 :global)) (a f32) (n u32))
+                  (let ((i (global-id 0)))
+                    (when (< i n)
+                      (setf (aref out i) (+ (* a (aref x i)) (aref y i))))))")
+  (gpu:with-gpu-array (x (gpu:to-device (filled 1000 (lambda (i) (float i)))))
+    (gpu:with-gpu-array (y (gpu:to-device (filled 1000 (constantly 2.0))))
+      (gpu:with-gpu-array (out (gpu:make-gpu-array 1000))
+        (is (null (funcall (kernel-function "saxpy") out x y 3.0 1000 :grid 1000)))
+        (is (every #'close-p (filled 1000 (lambda (i) (+ (* 3.0 i) 2.0)))
+                   (gpu:from-device out)))))))
+
+(test define-kernel-launches-asynchronously
+  (eval-kernel "(define-kernel fill-five ((out (ptr u32 :global)))
+                  (setf (aref out (global-id 0)) 5))")
+  (gpu:with-gpu-array (out (gpu:make-gpu-array 64 :element-type 'gpu:u32))
+    (let ((command (funcall (kernel-function "fill-five") out :grid 64 :wait nil)))
+      (gpu:wait command)
+      (is (every (lambda (value) (= value 5)) (gpu:from-device out))))))
+
+(test define-kernel-binds-shared-memory-by-element-count
+  (eval-kernel "(define-kernel reverse-groups ((a (ptr u32 :global)) (tile (ptr u32 :shared))
+                                               (out (ptr u32 :global)))
+                  (setf (aref tile (local-id 0)) (aref a (global-id 0)))
+                  (barrier)
+                  (setf (aref out (global-id 0))
+                        (aref tile (- (- (group-size 0) 1) (local-id 0)))))")
+  (gpu:with-gpu-array (a (gpu:to-device (filled 256 #'identity) :element-type 'gpu:u32))
+    (gpu:with-gpu-array (out (gpu:make-gpu-array 256 :element-type 'gpu:u32))
+      (funcall (kernel-function "reverse-groups") a 64 out :grid 256 :group 64)
+      (is (equalp (filled 256 (lambda (i) (+ (* 64 (floor i 64)) (- 63 (mod i 64)))))
+                  (gpu:from-device out))))))
+
+(test define-kernel-passes-vector-and-small-integer-parameters
+  (eval-kernel "(define-kernel scale-vec ((out (ptr f32 :global)) (v (vec f32 3)) (k i8))
+                  (setf (aref out 0) (* (convert f32 k) (aref v 2))))")
+  (gpu:with-gpu-array (out (gpu:make-gpu-array 1))
+    (funcall (kernel-function "scale-vec") out #(1.0 2.0 4.0) -3 :grid 1)
+    (is (equalp #(-12.0) (gpu:from-device out)))))
+
+(test define-kernel-reports-bad-launches
+  (eval-kernel "(define-kernel noop ((out (ptr f32 :global))) (setf (aref out 0) 1.0))")
+  (let ((noop (kernel-function "noop")))
+    (gpu:with-gpu-array (ints (gpu:make-gpu-array 1 :element-type 'gpu:i32))
+      (gpu:with-gpu-array (floats (gpu:make-gpu-array 1))
+        (signals gpu:gpu-error (funcall noop ints :grid 1))
+        (signals gpu:gpu-error (funcall noop floats))
+        (signals gpu:gpu-error (funcall noop floats :grid 1 :device nil :group 0))))))
+
+(test freed-arrays-release-their-buffers
+  (let ((array (gpu:make-gpu-array 4)))
+    (is (plusp (metal:buffer-size (gpu::array-buffer array))))
+    (gpu:free array)
+    (gpu:free array)
+    (signals gpu:gpu-error (gpu:from-device array))))
+
+(test metal-errors-are-gpu-errors
+  (signals gpu:gpu-error (metal:compile-library (metal:default-device) "not metal")))

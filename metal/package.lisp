@@ -1,6 +1,7 @@
 (defpackage #:cl-gpu/metal
   (:use #:cl)
   (:local-nicknames (#:gpu #:cl-gpu))
+  (:import-from #:cl-gpu #:wait)
   (:export
    #:metal-error #:metal-compile-error #:metal-error-message
    #:default-device #:device-name #:device-max-threads
