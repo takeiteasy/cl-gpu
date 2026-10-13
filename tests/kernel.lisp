@@ -7,6 +7,7 @@
 (defclass mock-device ()
   ((prepared :initform '() :accessor prepared)
    (launches :initform '() :accessor launches)
+   (synchronizes :initform 0 :accessor synchronizes)
    (freed :initform 0 :accessor freed)
    (limit :initform nil :initarg :limit)))
 
@@ -21,9 +22,11 @@
 (defmethod gpu:device-prepare ((device mock-device) source entry-name)
   (push (list source entry-name) (prepared device))
   entry-name)
-(defmethod gpu:device-launch ((device mock-device) prepared arguments grid group wait)
-  (push (list prepared arguments grid group wait) (launches device))
+(defmethod gpu:device-launch ((device mock-device) prepared arguments grid group)
+  (push (list prepared arguments grid group) (launches device))
   :command)
+(defmethod gpu:device-synchronize ((device mock-device))
+  (incf (synchronizes device)))
 
 (defmacro with-mock-device ((device) &body body)
   `(let* ((,device (make-instance 'mock-device))
@@ -144,13 +147,13 @@
     (is (search "Copy N" (documentation (kernel-function "copy-a") 'function)))
     (let ((in (gpu:to-device #(1 2))) (out (gpu:make-gpu-array 2)))
       (is (null (funcall (kernel-function "copy-a") out in 2 :grid 2)))
-      (destructuring-bind ((entry arguments grid group wait)) (launches device)
+      (destructuring-bind ((entry arguments grid group)) (launches device)
         (is (equal "copy_a" entry))
         (is (equal '(:buffer :bytes) (mapcar #'first (list (first arguments) (third arguments)))))
         (is (eq (type-of-spec "u32") (second (third arguments))))
         (is (equal '(2 1 1) grid))
         (is (null group))
-        (is (eq t wait))))))
+        (is (zerop (synchronizes device)) "a launch does not wait unless asked")))))
 
 (test pipelines-are-prepared-once-per-device
   (with-mock-device (device)
@@ -166,13 +169,21 @@
   (with-mock-device (device)
     (define-copy-kernel "copy-c")
     (let ((in (gpu:to-device #(1))) (out (gpu:make-gpu-array 1)))
-      (is (eq :command (funcall (kernel-function "copy-c") out in 1
-                                :grid '(4 2) :group '(2) :wait nil)))
-      (destructuring-bind ((entry arguments grid group wait)) (launches device)
+      (is (null (funcall (kernel-function "copy-c") out in 1
+                         :grid '(4 2) :group '(2) :wait t)))
+      (destructuring-bind ((entry arguments grid group)) (launches device)
         (declare (ignore entry arguments))
         (is (equal '(4 2 1) grid))
         (is (equal '(2 1 1) group))
-        (is (null wait))))))
+        (is (= 1 (synchronizes device)) "the launch waited for the device")))))
+
+(test synchronize-waits-for-the-given-or-current-device
+  (with-mock-device (device)
+    (let ((other (make-instance 'mock-device)))
+      (is (null (gpu:synchronize)))
+      (is (null (gpu:synchronize other)))
+      (is (= 1 (synchronizes device)))
+      (is (= 1 (synchronizes other))))))
 
 (test launch-checks-its-arguments
   (with-mock-device (device)

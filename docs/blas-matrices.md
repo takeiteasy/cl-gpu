@@ -22,7 +22,7 @@
 | `sgemm` | `transa transb alpha a b beta c` | `c`, set to `alpha*op(a)*op(b) + beta*c` |
 | `sgemm-batch-strided` | `transa transb alpha a b beta c &key batch-count a-stride b-stride c-stride` | `c`, with each product set as `sgemm` does |
 
-`sgemv` also takes `:x-offset` and `:y-offset`. A transpose flag is `:no-transpose`, `:transpose` or `:conjugate-transpose`; the last equals `:transpose` for real data. Every call waits for the GPU.
+`sgemv` also takes `:x-offset` and `:y-offset`. A transpose flag is `:no-transpose`, `:transpose` or `:conjugate-transpose`; the last equals `:transpose` for real data. Calls are [queued](kernels.md#queued-launches) like the Level 1 routines.
 
 ## Batched gemm
 

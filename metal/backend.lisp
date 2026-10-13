@@ -29,7 +29,10 @@
     (:bytes argument)
     (:shared (list :threadgroup (* 16 (ceiling (second argument) 16))))))
 
-(defmethod gpu:device-launch ((device metal-device) pipeline arguments grid group wait)
-  (dispatch pipeline (mapcar #'metal-argument arguments) grid :group group :wait wait))
+(defmethod gpu:device-launch ((device metal-device) pipeline arguments grid group)
+  (dispatch pipeline (mapcar #'metal-argument arguments) grid :group group))
+
+(defmethod gpu:device-synchronize ((device metal-device))
+  (synchronize-device device))
 
 (gpu:register-backend :metal #'default-device)

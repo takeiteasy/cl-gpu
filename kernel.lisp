@@ -55,8 +55,9 @@
 (defmacro define-kernel (&whole whole name arguments &body body)
   "Define the function NAME, which runs BODY on the GPU.
 ARGUMENTS is a list of (parameter type). The function takes one argument per parameter, then
-the keywords :grid (required), :group, :wait (default true) and :device. BODY is lowered now,
-so type errors are reported when the definition is compiled."
+the keywords :grid (required), :group, :wait and :device. The launch is queued: it returns NIL at
+once, or with :wait true after the device finishes all its launches (see SYNCHRONIZE). BODY is
+lowered now, so type errors are reported when the definition is compiled."
   (let ((documentation (when (and (stringp (first body)) (rest body))
                          (pop body)))
         (form `(progn ,@body))
@@ -68,7 +69,7 @@ so type errors are reported when the definition is compiled."
     (check-kernel whole name arguments form)
     `(progn
        (setf (get ',name 'gpu-kernel) (make-gpu-kernel ',name ',arguments ',form))
-       (defun ,name (,@parameters &key ((:grid ,grid)) ((:group ,group)) ((:wait ,wait) t)
+       (defun ,name (,@parameters &key ((:grid ,grid)) ((:group ,group)) ((:wait ,wait) nil)
                                     ((:device ,device)))
          ,@(when documentation (list documentation))
          (launch (find-kernel ',name) (list ,@parameters)
@@ -150,8 +151,8 @@ so type errors are reported when the definition is compiled."
       (gpu-fail "~(~a~): needs ~d bytes of shared memory, the device allows ~d"
                 (gpu-kernel-name kernel) needed limit))))
 
-(defun launch (kernel arguments &key grid group (wait t) device)
-  "Run KERNEL on ARGUMENTS over GRID threads. Return NIL, or with WAIT NIL the command to pass to WAIT."
+(defun launch (kernel arguments &key grid group wait device)
+  "Queue KERNEL on ARGUMENTS over GRID threads and return NIL. With WAIT, then wait for the device."
   (unless grid
     (gpu-fail "~(~a~): :grid is required" (gpu-kernel-name kernel)))
   (let* ((device (or device (current-device)))
@@ -162,6 +163,7 @@ so type errors are reported when the definition is compiled."
                           for value in arguments
                           collect (launch-argument kernel parameter value device))))
     (check-shared-memory kernel converted device)
-    (let ((command (device-launch device (prepared-kernel kernel device) converted grid group wait)))
-      (unless wait
-        command))))
+    (device-launch device (prepared-kernel kernel device) converted grid group)
+    (when wait
+      (device-synchronize device))
+    nil))

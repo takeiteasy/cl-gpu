@@ -19,19 +19,28 @@
 
 (defgeneric device-store (device buffer sequence element-type)
   (:documentation "Store the numbers in SEQUENCE from the start of BUFFER as ELEMENT-TYPE, a scalar or vector type.
-The components of vector elements are consecutive in SEQUENCE. A 3-vector takes the space of a 4-vector."))
+The components of vector elements are consecutive in SEQUENCE. A 3-vector takes the space of a 4-vector.
+Launches that are still running finish first."))
 
 (defgeneric device-load (device buffer sequence element-type)
   (:documentation "Fill SEQUENCE with the components of elements of ELEMENT-TYPE from the start of BUFFER.
-ELEMENT-TYPE and the layout are those of DEVICE-STORE."))
+ELEMENT-TYPE and the layout are those of DEVICE-STORE. Launches that are still running finish first."))
 
 (defgeneric device-prepare (device source entry-name)
   (:documentation "Compile SOURCE and return the runnable kernel ENTRY-NAME."))
 
-(defgeneric device-launch (device prepared arguments grid group wait)
-  (:documentation "Run PREPARED over GRID, a list of three thread counts, in groups of GROUP or NIL.
+(defgeneric device-launch (device prepared arguments grid group)
+  (:documentation "Enqueue PREPARED over GRID, a list of three thread counts, in groups of GROUP or NIL.
 ARGUMENTS are (:buffer buffer), (:bytes type value) or (:shared bytes) in parameter order.
-Return the backend's command, which has finished when WAIT."))
+Launches on one device run in order, but may not have started when this returns: DEVICE-STORE,
+DEVICE-LOAD and DEVICE-SYNCHRONIZE wait for them."))
+
+(defgeneric device-synchronize (device)
+  (:documentation "Block until every launch on DEVICE has finished. Signal the first error a launch
+raised since the last call.")
+  (:method (device)
+    (declare (ignore device))
+    nil))
 
 (defgeneric device-gemm (device m n k alpha a b beta c count)
   (:documentation "Set COUNT M by N matrices C[i] to ALPHA*A[i]*B[i] + BETA*C[i], where A[i] is M by K and B[i] is K by N.
@@ -44,9 +53,6 @@ backends may specialize."))
   (:documentation "Set the M elements of Y to ALPHA*A*X + BETA*Y, where A is M by N and X has N elements.
 A is as in DEVICE-GEMM; X and Y are (array start increment) lists. M and N are positive and ALPHA is
 not zero. Provided by cl-gpu/blas, which backends may specialize."))
-
-(defgeneric wait (command)
-  (:documentation "Block until the command that DEVICE-LAUNCH returned finishes."))
 
 ;;; Devices
 
@@ -68,3 +74,9 @@ not zero. Provided by cl-gpu/blas, which backends may specialize."))
       (if *backends*
           (funcall (cdr (first *backends*)))
           (gpu-fail "no GPU backend is loaded; load cl-gpu/metal"))))
+
+(defun synchronize (&optional (device (current-device)))
+  "Block until every launch on DEVICE, by default the current device, has finished.
+Signal the first error a launch raised since the last synchronization."
+  (device-synchronize device)
+  nil)

@@ -354,6 +354,35 @@ a reversed view is compared with the reversed data in row-major order."
             (blas:sgemv :no-transpose 0f0 (blas:make-matrix-view ga 5 3) gx 1 3f0 gy 1)
             (is (all-close-p (map 'vector (lambda (v) (* 3 v)) y) (gpu:from-device gy)) path)))))))
 
+;;; Launches are queued, so routines must see each other's results
+
+(test queued-routines-feed-reductions-and-products
+  (with-both-paths
+    (let* ((x0 (random-vector 300)) (y0 (random-vector 300))
+           (a0 (random-vector 12)) (b0 (random-vector 12)) (c0 (random-vector 9))
+           (x (copy-seq x0)) (y (copy-seq y0)) (a (copy-seq a0)) (c (copy-seq c0)))
+      (dotimes (i 40)
+        (simd:saxpy 300 0.5f0 x0 1 y 1)
+        (simd:sscal 300 0.99f0 y 1))
+      (simd:sscal 12 3f0 a 1)
+      (simd:sgemm :no-transpose :no-transpose 1f0 (simd:make-matrix-view a 3 4)
+                  (simd:make-matrix-view b0 4 3) 0.5f0 (simd:make-matrix-view c 3 3))
+      (gpu:with-gpu-array (gx (gpu:to-device x0))
+        (gpu:with-gpu-array (gy (gpu:to-device y0))
+          (gpu:with-gpu-array (ga (gpu:to-device a0))
+            (gpu:with-gpu-array (gb (gpu:to-device b0))
+              (gpu:with-gpu-array (gc (gpu:to-device c0))
+                (dotimes (i 40)
+                  (blas:saxpy 300 0.5f0 gx 1 gy 1)
+                  (blas:sscal 300 0.99f0 gy 1))
+                (blas:sscal 12 3f0 ga 1)
+                (blas:sgemm :no-transpose :no-transpose 1f0 (blas:make-matrix-view ga 3 4)
+                            (blas:make-matrix-view gb 4 3) 0.5f0 (blas:make-matrix-view gc 3 3))
+                (is (close-p (simd:sdot 300 x0 1 y 1) (blas:sdot 300 gx 1 gy 1)) path)
+                (is (close-p (simd:snrm2 9 c 1) (blas:snrm2 9 gc 1)) path)
+                (is (all-close-k-p c (gpu:from-device gc) 4) path)
+                (is (all-close-k-p y (gpu:from-device gy) 40) path)))))))))
+
 ;;; Batched gemm
 
 (defparameter *batch-kinds* '(:row-major :column-major :padded))
@@ -505,7 +534,7 @@ a reversed view is compared with the reversed data in row-major order."
 (defmethod gpu:device-load ((device mock-device) buffer sequence element-type)
   (replace sequence buffer))
 (defmethod gpu:device-prepare ((device mock-device) source entry-name) entry-name)
-(defmethod gpu:device-launch ((device mock-device) prepared arguments grid group wait)
+(defmethod gpu:device-launch ((device mock-device) prepared arguments grid group)
   (incf (launches device))
   :command)
 

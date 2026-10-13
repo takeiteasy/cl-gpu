@@ -79,7 +79,7 @@ MPS writes a row-major result; a column-major C is computed as its transpose."
                      (fill-matrix-shape shapes index spec (mps-matrix spec count) count))
             (multiple-value-bind (status message)
                 (with-error-slot (slot)
-                  (%mps-gemm (device-queue device)
+                  (%mps-gemm (device-stream device)
                              (if (first (mps-matrix left count)) 1 0)
                              (if (first (mps-matrix right count)) 1 0)
                              m n k alpha beta count buffers shapes slot))
@@ -103,7 +103,7 @@ MPS writes a row-major result; a column-major C is computed as its transpose."
                   do (setf (cffi:mem-aref shapes :unsigned-long slot) value))
             (multiple-value-bind (status message)
                 (with-error-slot (slot)
-                  (%mps-gemv (device-queue device) (if transposed 1 0) m n
+                  (%mps-gemv (device-stream device) (if transposed 1 0) m n
                              alpha beta buffers shapes slot))
               (unless (zerop status)
                 (fail "~a" (or message "gemv failed"))))))

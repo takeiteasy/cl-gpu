@@ -27,7 +27,7 @@
 | `sasum` | `n x incx` | the sum of absolute values |
 | `isamax` | `n x incx` | zero-based index of the first element of largest magnitude |
 
-Each takes `:x-offset` (and `:y-offset` for two vectors), default 0. Vectors are `f32` `gpu-array`s on one device. Every routine waits for the GPU. Reductions return Lisp numbers.[^1]
+Each takes `:x-offset` (and `:y-offset` for two vectors), default 0. Vectors are `f32` `gpu-array`s on one device. Routines are [queued](kernels.md#queued-launches) and return at once; reductions wait for the result and return Lisp numbers.[^1]
 
 ## Increments and offsets
 
@@ -45,7 +45,6 @@ A span is `n` elements from the offset, `|inc|` apart. A negative increment visi
 
 - f32 only ([#40](https://github.com/communal-software/cl-gpu/issues/40)). No rotations ([#41](https://github.com/communal-software/cl-gpu/issues/41)) or complex routines ([#39](https://github.com/communal-software/cl-gpu/issues/39)).
 - `gemv` and `gemm`, including batches, are on the [matrices](blas-matrices.md) page.
-- Every launch waits ([#42](https://github.com/communal-software/cl-gpu/issues/42)).
 - Reductions allocate a partials array per call ([#43](https://github.com/communal-software/cl-gpu/issues/43)).
 - `isamax` of data holding NaN is not defined.
 

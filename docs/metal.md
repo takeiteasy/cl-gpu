@@ -31,16 +31,14 @@
 | `(buffer-pointer buffer)`, `(buffer-size buffer)` | host address and size in bytes |
 | `(compile-library device source)` | a library; a compile error signals `metal-compile-error` with the compiler's log |
 | `(make-pipeline library name)` | the pipeline for kernel function `name`; `pipeline-max-threads`, `pipeline-execution-width` |
-| `(dispatch pipeline arguments grid &key group wait)` | runs the kernel and returns a command |
-| `(wait command)` | blocks until the command finishes; `metal-error` if it failed |
-| `(command-done-p command)` | whether the command has finished |
+| `(dispatch pipeline arguments grid &key group wait)` | queues the kernel and returns `nil`; with `wait`, then waits for the device |
 | `(release object)` | frees the object; releasing twice is harmless |
 
 `with-buffer`, `with-library` and `with-pipeline` take the same arguments as their constructors, bind the result and release it on exit.
 
 ## Dispatch
 
-`grid` is a thread count or a list of up to three. It need not divide by the group size.[^2] `group` defaults to the pipeline's execution width, capped at the grid. `dispatch` waits unless `:wait nil`.
+`grid` is a thread count or a list of up to three. It need not divide by the group size.[^2] `group` defaults to the pipeline's execution width, capped at the grid.
 
 `arguments` follow the kernel's parameter order:
 
@@ -54,9 +52,28 @@
 
 `copy-to-buffer` and `copy-from-buffer` take the components of vector elements consecutively in `sequence`. A 3-vector takes the space of a 4-vector in the buffer, and the padding is left alone.
 
+## Streams
+
+Each device has one stream. `dispatch` encodes into the stream's open command buffer, which is committed after 64 dispatches and when the device is waited on. Dispatches and MPS products run in the order they were queued. The stream is thread-safe: launches from several threads interleave in one command buffer.
+
+| Call | Waits for the device's pending work |
+|---|---|
+| `dispatch` with `:wait t` | yes |
+| `buffer-pointer`, `copy-to-buffer`, `copy-from-buffer` | yes, before touching the buffer |
+| `release` of a device | yes, then frees the stream |
+| `release` of a buffer | no; pending work keeps the buffer alive |
+
+`cl-gpu:synchronize` waits explicitly. A failed command signals `metal-error` from the first wait after it.
+
 ## MetalPerformanceShaders
 
 The shim links MetalPerformanceShaders. With `cl-gpu/blas` loaded, `device-gemm` and `device-gemv` on a Metal device call it where the layouts allow, and bind `*use-mps*` to `nil` to use the DSL kernels instead. See [BLAS matrices](blas-matrices.md#metal-and-mps).
+
+## Limitations
+
+- The stream commits after a fixed 64 dispatches ([#48](https://github.com/communal-software/cl-gpu/issues/48)).
+- Host access waits for the whole device, not only the dispatches that use the buffer ([#49](https://github.com/communal-software/cl-gpu/issues/49)).
+- One lock guards each device's stream ([#50](https://github.com/communal-software/cl-gpu/issues/50)).
 
 ## Errors
 

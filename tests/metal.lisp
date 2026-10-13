@@ -1,6 +1,6 @@
 (defpackage #:cl-gpu/metal/tests
   (:use #:cl #:fiveam)
-  (:local-nicknames (#:gpu #:cl-gpu) (#:metal #:cl-gpu/metal))
+  (:local-nicknames (#:gpu #:cl-gpu) (#:metal #:cl-gpu/metal) (#:bt #:bordeaux-threads))
   (:export #:run-tests))
 
 ;;; Package that kernel text is read in.
@@ -155,14 +155,56 @@ kernel void present() {}")
       (metal:dispatch pipeline (list c) 1000 :group 64)
       (is (equalp #(1000) (read-back c 'gpu:u32 1))))))
 
-(test commands-can-be-waited-on-later
+(test dispatches-queue-until-the-device-synchronizes
   (with-kernel (pipeline "(setf (aref out (global-id 0)) 5)" "((out (ptr u32 :global)))")
-    (metal:with-buffer (out (metal:default-device) 4)
-      (let ((command (metal:dispatch pipeline (list out) 1 :wait nil)))
-        (metal:wait command)
-        (is (metal:command-done-p command))
-        (metal:wait command)
-        (is (equalp #(5) (read-back out 'gpu:u32 1)))))))
+    (metal:with-buffer (out (metal:default-device) 16)
+      (is (null (metal:dispatch pipeline (list out) 4)))
+      (is (equalp #(5 5 5 5) (read-back out 'gpu:u32 4)) "a host read sees the dispatch"))
+    (metal:with-buffer (out (metal:default-device) 16)
+      (is (null (metal:dispatch pipeline (list out) 4 :wait t)))
+      (is (equalp #(5 5 5 5) (read-back out 'gpu:u32 4))))))
+
+(test host-writes-wait-for-dispatches-that-read
+  (with-kernel (pipeline "(setf (aref out (global-id 0)) (aref in (global-id 0)))"
+                         "((in (ptr u32 :global)) (out (ptr u32 :global)))")
+    (metal:with-buffer (in (metal:default-device) 16)
+      (metal:with-buffer (out (metal:default-device) 16)
+        (metal:copy-to-buffer in #(1 2 3 4) :element-type 'gpu:u32)
+        (metal:dispatch pipeline (list in out) 4)
+        (metal:copy-to-buffer in #(9 9 9 9) :element-type 'gpu:u32)
+        (is (equalp #(1 2 3 4) (read-back out 'gpu:u32 4)))))))
+
+(test dispatches-run-in-order-across-command-buffers
+  (with-kernel (pipeline "(incf (aref out (global-id 0)) 1)" "((out (ptr u32 :global)))")
+    (metal:with-buffer (out (metal:default-device) 16)
+      (dotimes (i 1000)
+        (metal:dispatch pipeline (list out) 4))
+      (is (equalp #(1000 1000 1000 1000) (read-back out 'gpu:u32 4))))))
+
+(test releasing-a-device-buffer-after-queueing-keeps-the-result
+  (eval-kernel "(define-kernel copy-from ((in (ptr u32 :global)) (out (ptr u32 :global)))
+                  (setf (aref out (global-id 0)) (aref in (global-id 0))))")
+  (gpu:with-gpu-array (out (gpu:make-gpu-array 1024 :element-type 'gpu:u32))
+    (let ((in (gpu:to-device (filled 1024 (constantly 3)) :element-type 'gpu:u32)))
+      (funcall (kernel-function "copy-from") in out :grid 1024)
+      (gpu:free in)
+      (is (every (lambda (value) (= value 3)) (gpu:from-device out))))))
+
+(test launches-from-many-threads-share-a-device
+  (eval-kernel "(define-kernel bump ((out (ptr u32 :global)))
+                  (incf (aref out (global-id 0)) 1))")
+  (let* ((threads (loop for id below 4
+                        collect (let ((id id))
+                                  (bt:make-thread
+                                   (lambda ()
+                                     (gpu:with-gpu-array (out (gpu:make-gpu-array 8 :element-type 'gpu:u32))
+                                       (dotimes (i (+ 200 id))
+                                         (funcall (kernel-function "bump") out :grid 8))
+                                       (gpu:synchronize)
+                                       (every (lambda (value) (= value (+ 200 id)))
+                                              (gpu:from-device out))))))))
+         (results (mapcar #'bt:join-thread threads)))
+    (is (every #'identity results))))
 
 ;;; define-kernel and GPU arrays
 
@@ -200,9 +242,16 @@ kernel void present() {}")
   (eval-kernel "(define-kernel fill-five ((out (ptr u32 :global)))
                   (setf (aref out (global-id 0)) 5))")
   (gpu:with-gpu-array (out (gpu:make-gpu-array 64 :element-type 'gpu:u32))
-    (let ((command (funcall (kernel-function "fill-five") out :grid 64 :wait nil)))
-      (gpu:wait command)
-      (is (every (lambda (value) (= value 5)) (gpu:from-device out))))))
+    (is (null (funcall (kernel-function "fill-five") out :grid 64)))
+    (is (null (gpu:synchronize)))
+    (is (every (lambda (value) (= value 5)) (gpu:from-device out)))))
+
+(test define-kernel-waits-on-request
+  (eval-kernel "(define-kernel fill-six ((out (ptr u32 :global)))
+                  (setf (aref out (global-id 0)) 6))")
+  (gpu:with-gpu-array (out (gpu:make-gpu-array 64 :element-type 'gpu:u32))
+    (is (null (funcall (kernel-function "fill-six") out :grid 64 :wait t)))
+    (is (every (lambda (value) (= value 6)) (gpu:from-device out)))))
 
 (test define-kernel-binds-shared-memory-by-element-count
   (eval-kernel "(define-kernel reverse-groups ((a (ptr u32 :global)) (tile (ptr u32 :shared))

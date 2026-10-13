@@ -26,7 +26,7 @@
 |---|---|
 | `:grid` | thread count, or a list of up to three; required |
 | `:group` | threads per group; defaults to the device's choice |
-| `:wait` | `t` (default) waits for the kernel; `nil` returns a command to pass to `wait` |
+| `:wait` | `t` waits for the device to finish; default `nil` queues the launch (see [queued launches](#queued-launches)) |
 | `:device` | the [device](#devices); defaults to `(current-device)` |
 
 The body is [lowered](kernel-ir.md) when the definition is compiled, so a type error is reported then. The first launch on a device prints the source, compiles it and caches the result.[^1]
@@ -63,6 +63,25 @@ A vector array takes its contents as one sequence per element or as all the comp
 
 An array not freed is released when it is garbage collected. Use `free` for large arrays: the collector does not see device memory pressure.
 
+## Queued launches
+
+A launch returns `nil` at once and runs later, in order with the other launches on its device. The device runs queued launches in batches, so many small launches cost little each.[^5]
+
+| Call | Effect |
+|---|---|
+| `(synchronize &optional device)` | blocks until every launch on `device` has finished; signals the first launch error since the last call |
+| `:wait t` on a launch | the launch, then `synchronize` |
+| `from-device`, `to-device` and BLAS reductions | wait for the device first |
+| `free` | safe with launches pending |
+
+```lisp
+(dotimes (i 1000)
+  (saxpy out x 3.0 1000 :grid 1000))   ; queued
+(from-device out)                      ; waits, then reads
+```
+
+A launch that fails on the GPU reports at the next wait on its device, not at the launch.
+
 ## Devices
 
 `*device*` or, when it is `nil`, the default device of the first loaded backend.
@@ -70,7 +89,7 @@ An array not freed is released when it is garbage collected. Use `free` for larg
 | Function | Result |
 |---|---|
 | `(current-device)` | the device used when `:device` is omitted |
-| `(wait command)` | blocks until an asynchronous launch finishes |
+| `(synchronize &optional device)` | blocks until the device's launches finish |
 
 `cl-gpu/metal` is the only backend. `current-device` signals `gpu-error` when none is loaded.
 
@@ -85,9 +104,10 @@ An array not freed is released when it is garbage collected. Use `free` for larg
 
 ## Backends
 
-A backend implements `device-target`, `device-allocate`, `device-free`, `device-store`, `device-load`, `device-prepare` and `device-launch` for its device class and calls `register-backend`.[^2] It may also implement `device-shared-memory-limit`, the bytes of shared memory a kernel may use; `nil`, the default, skips the check. `cl-gpu/blas` adds the generics `device-gemm` and `device-gemv`, whose default methods run DSL kernels; a backend may specialize them to call a vendor library and use `call-next-method` for layouts it cannot handle.
+A backend implements `device-target`, `device-allocate`, `device-free`, `device-store`, `device-load`, `device-prepare` and `device-launch` for its device class and calls `register-backend`.[^2] `device-store` and `device-load` wait for pending launches. `device-synchronize` waits for all of them and defaults to doing nothing, for backends that run a launch before it returns. It may also implement `device-shared-memory-limit`, the bytes of shared memory a kernel may use; `nil`, the default, skips the check. `cl-gpu/blas` adds the generics `device-gemm` and `device-gemv`, whose default methods run DSL kernels; a backend may specialize them to call a vendor library and use `call-next-method` for layouts it cannot handle.
 
 [^1]: The cache is per kernel and per device. `device-prepare` receives the source and the entry function name and returns whatever `device-launch` runs.
-[^2]: `device-launch` receives its arguments as `(:buffer b)`, `(:bytes type value)` or `(:shared bytes)` in parameter order, the grid and group as lists of three, and returns the backend's command.
+[^2]: `device-launch` receives its arguments as `(:buffer b)`, `(:bytes type value)` or `(:shared bytes)` in parameter order, and the grid and group as lists of three.
 [^3]: A 3-vector takes the space of a 4-vector in the buffer, as in Metal; the padding is never read or written. `:flat` has no effect on scalar arrays.
 [^4]: The location comes from re-reading the file being compiled or loaded and finding the `define-kernel` form in it. There is none for a form produced by another macro, written with `#.`, a backquote or an uninterned symbol, or evaluated at the REPL. Two identical `define-kernel` forms in one file both point at the first.
+[^5]: On Metal, launches share one command buffer that is committed after 64 of them and at every wait. 2000 launches of a 256-thread kernel take 8 ms queued and 220 ms with `:wait t` on each (Apple M1).

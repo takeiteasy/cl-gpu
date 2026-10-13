@@ -43,14 +43,15 @@
 
 (defclass metal-device (metal-object)
   ((queue :initarg :queue :reader device-queue)
+   (stream :initarg :stream :accessor device-stream)
    (mps-support :initform :unknown :accessor device-mps-support)))
 
-(defclass metal-buffer (metal-object) ())
+(defclass metal-buffer (metal-object)
+  ((device :initarg :device :reader buffer-device)))
 (defclass metal-library (metal-object)
   ((device :initarg :device :reader library-device)))
 (defclass metal-pipeline (metal-object)
   ((device :initarg :device :reader pipeline-device)))
-(defclass metal-command (metal-object) ())
 
 ;;; Device
 
@@ -62,8 +63,10 @@
       (let ((handle (%device-default)))
         (when (cffi:null-pointer-p handle)
           (fail "no Metal device"))
-        (setf *default-device*
-              (make-instance 'metal-device :handle handle :queue (%queue-new handle))))))
+        (let ((queue (%queue-new handle)))
+          (setf *default-device*
+                (make-instance 'metal-device :handle handle :queue queue
+                                             :stream (%stream-new queue)))))))
 
 (defun device-name (device)
   (take-string (%device-name (live-handle device))))
@@ -74,12 +77,27 @@
 (defun device-max-threadgroup-memory (device)
   (%device-max-threadgroup-memory (live-handle device)))
 
+(defun synchronize-device (device)
+  "Block until every dispatch on DEVICE has finished. Signals METAL-ERROR for the first that failed."
+  (when (device-stream device)
+    (multiple-value-bind (status message)
+        (with-error-slot (slot)
+          (%stream-wait (device-stream device) slot))
+      (unless (zerop status)
+        (fail "~a" (or message "command failed")))))
+  nil)
+
 (defmethod release ((device metal-device))
-  (when (handle device)
-    (%release (device-queue device))
-    (when (eq device *default-device*)
-      (setf *default-device* nil)))
-  (call-next-method))
+  (unwind-protect (when (handle device)
+                    (synchronize-device device))
+    (when (handle device)
+      (%release (device-stream device))
+      (setf (device-stream device) nil)
+      (%release (device-queue device))
+      (when (eq device *default-device*)
+        (setf *default-device* nil)))
+    (call-next-method))
+  nil)
 
 ;;; Element encodings
 
@@ -187,7 +205,7 @@
   (let ((handle (%buffer-new (live-handle device) bytes)))
     (when (cffi:null-pointer-p handle)
       (fail "could not allocate a ~d-byte buffer" bytes))
-    (let ((buffer (make-instance 'metal-buffer :handle handle)))
+    (let ((buffer (make-instance 'metal-buffer :handle handle :device device)))
       (cffi:foreign-funcall "memset" :pointer (%buffer-contents handle) :int 0
                                      :unsigned-long bytes :pointer)
       buffer)))
@@ -196,7 +214,10 @@
   (%buffer-length (live-handle buffer)))
 
 (defun buffer-pointer (buffer)
-  "The host address of BUFFER's contents. Valid until BUFFER is released."
+  "The host address of BUFFER's contents, once the device has finished its dispatches.
+Valid until BUFFER is released."
+  ;; TODO: waits for the whole device, not only the dispatches that use BUFFER (#49)
+  (synchronize-device (buffer-device buffer))
   (%buffer-contents (live-handle buffer)))
 
 (defun check-fits (buffer elements stride)
@@ -302,10 +323,12 @@ A vector's components are consecutive in SEQUENCE."
           (write-element pointer name value 0)))
     (values pointer size)))
 
-(defun dispatch (pipeline arguments grid &key group (wait t))
-  "Run PIPELINE over GRID threads. Returns a command, after it has finished when WAIT.
+(defun dispatch (pipeline arguments grid &key group wait)
+  "Queue PIPELINE over GRID threads on its device and return NIL; with WAIT, then wait for the
+device's dispatches. Dispatches run in order. A failure in one is signalled by the next wait.
 ARGUMENTS are in kernel parameter order: a buffer, (:bytes type value) or (:threadgroup bytes)."
-  (let* ((sizes (grid-sizes grid))
+  (let* ((device (pipeline-device pipeline))
+         (sizes (grid-sizes grid))
          (group (grid-sizes (or group (default-group pipeline sizes))))
          (count (length arguments))
          (owned '()))
@@ -340,33 +363,16 @@ ARGUMENTS are in kernel parameter order: a buffer, (:bytes type value) or (:thre
                    do (setf (cffi:mem-aref grid-array :unsigned-long index) size))
              (loop for size in group for index from 0
                    do (setf (cffi:mem-aref group-array :unsigned-long index) size))
-             (multiple-value-bind (handle message)
+             (multiple-value-bind (status message)
                  (with-error-slot (slot)
-                   (%dispatch (device-queue (pipeline-device pipeline)) (live-handle pipeline)
-                              count kinds values lengths grid-array group-array slot))
-               (when (cffi:null-pointer-p handle)
-                 (fail "~a" (or message "dispatch failed")))
-               (let ((command (make-instance 'metal-command :handle handle)))
-                 (when wait
-                   (wait command))
-                 command)))
-        (mapc #'cffi:foreign-free owned)))))
-
-(defun command-done-p (command)
-  (or (null (handle command))
-      (/= 0 (%command-done-p (handle command)))))
-
-(defmethod wait ((command metal-command))
-  "Block until COMMAND finishes. Signals METAL-ERROR if it failed. The command is released."
-  (when (handle command)
-    (unwind-protect
-         (multiple-value-bind (status message)
-             (with-error-slot (slot)
-               (%command-wait (handle command) slot))
-           (unless (zerop status)
-             (fail "~a" (or message "command failed"))))
-      (release command)))
-  nil)
+                   (%stream-dispatch (device-stream device) (live-handle pipeline)
+                                     count kinds values lengths grid-array group-array slot))
+               (unless (zerop status)
+                 (fail "~a" (or message "dispatch failed")))))
+        (mapc #'cffi:foreign-free owned)))
+    (when wait
+      (synchronize-device device))
+    nil))
 
 ;;; Scoped resources
 
