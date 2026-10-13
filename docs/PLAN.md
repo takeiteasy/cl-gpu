@@ -23,14 +23,14 @@ The cl-webgpu shader DSL (a 3bgl-shaders fork) informs the inference tests but c
 | 1 | Eclector reader and compute-subset walker | [#1](https://github.com/communal-software/cl-gpu/issues/1) | Done |
 | 2 | Type set and kernel IR | [#2](https://github.com/communal-software/cl-gpu/issues/2) | Done |
 | 3 | C-like printer base and MSL printer | [#3](https://github.com/communal-software/cl-gpu/issues/3) | Done |
-| 4 | Metal runtime | [#4](https://github.com/communal-software/cl-gpu/issues/4) | Open |
+| 4 | Metal runtime | [#4](https://github.com/communal-software/cl-gpu/issues/4) | Done |
 | 5 | `define-kernel` and buffer API | [#5](https://github.com/communal-software/cl-gpu/issues/5) | Open |
 | 6 | CUDA backend | [#6](https://github.com/communal-software/cl-gpu/issues/6) | Open |
 | 7 | OpenCL backend | [#7](https://github.com/communal-software/cl-gpu/issues/7) | Open |
 
 ## Limitations
 
-Kernels print as Metal source but nothing runs them yet, and there are no CUDA or OpenCL printers.
+Kernels print as Metal source and run through the [Metal runtime](metal.md). There are no CUDA or OpenCL printers.
 
 - No `loop`, `do`, `tagbody` or `go` ([kernel forms](kernel-forms.md)).
 - No `flet` or `labels` ([#8](https://github.com/communal-software/cl-gpu/issues/8)).
@@ -39,4 +39,5 @@ Kernels print as Metal source but nothing runs them yet, and there are no CUDA o
 - No local arrays or static shared memory ([#11](https://github.com/communal-software/cl-gpu/issues/11)).
 - CUDA needs operators for vector types ([#12](https://github.com/communal-software/cl-gpu/issues/12)).
 - No pointer arithmetic ([#13](https://github.com/communal-software/cl-gpu/issues/13)).
+- Buffers use shared storage only ([#15](https://github.com/communal-software/cl-gpu/issues/15)).
 - `mod` is unsigned only and `rem` is integer only ([#14](https://github.com/communal-software/cl-gpu/issues/14)).

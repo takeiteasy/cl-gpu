@@ -1,6 +1,6 @@
 # Printers
 
-A printer writes a lowered kernel as source for one target. Metal is the only target so far.
+A printer writes a lowered kernel as source for one target. Metal is the only target so far; the [Metal runtime](metal.md) runs its output.
 
 ```lisp
 (cl-gpu:kernel-source

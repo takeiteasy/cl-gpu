@@ -4,12 +4,18 @@
 
 S-expression GPU kernel DSL for Common Lisp with Metal, CUDA and OpenCL backends.
 
-See the [plan](docs/PLAN.md) for status and phases. For kernels: [forms](docs/kernel-forms.md), [types](docs/types.md), [intrinsics](docs/intrinsics.md), the [IR](docs/kernel-ir.md) and the [printers](docs/printers.md).
+See the [plan](docs/PLAN.md) for status and phases. For kernels: [forms](docs/kernel-forms.md), [types](docs/types.md), [intrinsics](docs/intrinsics.md), the [IR](docs/kernel-ir.md), the [printers](docs/printers.md) and the [Metal runtime](docs/metal.md).
 
 ## Tests
 
 ```sh
 sbcl --noinform --non-interactive --eval '(asdf:test-system "cl-gpu")'
+```
+
+On macOS, the Metal runtime has its own tests:
+
+```sh
+sbcl --noinform --non-interactive --eval '(asdf:test-system "cl-gpu/metal")'
 ```
 
 ## License
