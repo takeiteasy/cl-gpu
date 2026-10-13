@@ -354,6 +354,144 @@ a reversed view is compared with the reversed data in row-major order."
             (blas:sgemv :no-transpose 0f0 (blas:make-matrix-view ga 5 3) gx 1 3f0 gy 1)
             (is (all-close-p (map 'vector (lambda (v) (* 3 v)) y) (gpu:from-device gy)) path)))))))
 
+;;; Batched gemm
+
+(defparameter *batch-kinds* '(:row-major :column-major :padded))
+
+(defun batch-view (library data rows cols kind offset)
+  "A ROWS by COLS view of DATA at OFFSET in the layout KIND, from the LIBRARY :simd or :gpu."
+  (let ((make (ecase library
+                (:simd #'simd:make-matrix-view)
+                (:gpu #'blas:make-matrix-view))))
+    (ecase kind
+      (:row-major (funcall make data rows cols :offset offset))
+      (:column-major (funcall make data rows cols :layout :column-major :offset offset))
+      (:padded (funcall make data rows cols :leading-dimension (+ cols 3) :offset offset)))))
+
+(defun batch-data (rows cols kind count stride)
+  "A random array for COUNT products STRIDE apart, and the offset of the first."
+  (let ((offset (if (minusp stride) (* (1- (max count 1)) (abs stride)) 0)))
+    (values (random-vector (+ offset 2 (kind-length rows cols kind)
+                              (* (max 0 (1- count)) (abs stride))))
+            offset)))
+
+(defun check-batch (m n k transa transb alpha beta kinds count strides message
+                    &key (c-fill nil))
+  "Compare SGEMM-BATCH-STRIDED with the oracle; KINDS and STRIDES are those of A, B and C."
+  (destructuring-bind (a-kind b-kind c-kind) kinds
+    (destructuring-bind (a-stride b-stride c-stride) strides
+      (let* ((plain-a (eq transa :no-transpose))
+             (plain-b (eq transb :no-transpose))
+             (ar (if plain-a m k)) (ac (if plain-a k m))
+             (br (if plain-b k n)) (bc (if plain-b n k)))
+        (multiple-value-bind (a a-offset) (batch-data ar ac a-kind count a-stride)
+          (multiple-value-bind (b b-offset) (batch-data br bc b-kind count b-stride)
+            (multiple-value-bind (c c-offset) (batch-data m n c-kind count c-stride)
+              (when c-fill (fill c c-fill))
+              (let ((expected (copy-seq c)))
+                (simd:sgemm-batch-strided
+                 transa transb alpha
+                 (batch-view :simd a ar ac a-kind a-offset) (batch-view :simd b br bc b-kind b-offset)
+                 beta (batch-view :simd expected m n c-kind c-offset)
+                 :batch-count count :a-stride a-stride :b-stride b-stride :c-stride c-stride)
+                (gpu:with-gpu-array (ga (gpu:to-device a))
+                  (gpu:with-gpu-array (gb (gpu:to-device b))
+                    (gpu:with-gpu-array (gc (gpu:to-device c))
+                      (let ((view (batch-view :gpu gc m n c-kind c-offset)))
+                        (is (eq view (blas:sgemm-batch-strided
+                                      transa transb alpha
+                                      (batch-view :gpu ga ar ac a-kind a-offset)
+                                      (batch-view :gpu gb br bc b-kind b-offset) beta view
+                                      :batch-count count :a-stride a-stride :b-stride b-stride
+                                      :c-stride c-stride))))
+                      (is (every (lambda (x y) (or (and (/= x x) (/= y y)) (close-k-p x y k)))
+                                 expected (gpu:from-device gc))
+                          message))))))))))))
+
+(defun packed-strides (m n k transa transb kinds)
+  "Strides that place each product of a batch just after the one before."
+  (destructuring-bind (a-kind b-kind c-kind) kinds
+    (let ((plain-a (eq transa :no-transpose))
+          (plain-b (eq transb :no-transpose)))
+      (list (kind-length (if plain-a m k) (if plain-a k m) a-kind)
+            (kind-length (if plain-b k n) (if plain-b n k) b-kind)
+            (kind-length m n c-kind)))))
+
+(test sgemm-batch-strided-matches-the-oracle
+  (with-both-paths
+    (let ((counter 0))
+      (loop for (m n k) in '((1 1 1) (3 5 7) (16 16 16) (17 19 13) (40 33 20))
+            do (dolist (transa *flags*)
+                 (dolist (transb *flags*)
+                   (destructuring-bind (alpha beta) (nth (mod counter (length *scalars*)) *scalars*)
+                     (let ((kinds (subseq (rotate *batch-kinds* counter) 0 3)))
+                       (check-batch m n k transa transb alpha beta kinds (+ 2 (mod counter 4))
+                                    (packed-strides m n k transa transb kinds)
+                                    (format nil "~a ~dx~dx~d ~a ~a ~a ~a ~a" path m n k transa transb
+                                            alpha beta kinds)))
+                     (incf counter))))))))
+
+(test sgemm-batch-strided-takes-signed-and-zero-strides
+  (with-both-paths
+    (let* ((kinds '(:row-major :row-major :row-major))
+           (packed (packed-strides 9 11 7 :no-transpose :no-transpose kinds)))
+      (destructuring-bind (a b c) packed
+        (loop for strides in (list (list 0 b c) (list a 0 c) (list 0 0 c) (list (- a) b (- c))
+                                   (list a (- b) c) (list (* 2 a) (* 3 b) (* 2 c)) (list 0 (- b) (- c)))
+              do (check-batch 9 11 7 :no-transpose :no-transpose 1.5f0 0.5f0 kinds 4 strides
+                              (format nil "~a ~a" path strides)))))))
+
+(test sgemm-batch-strided-handles-one-and-no-products
+  (with-both-paths
+    (let ((kinds '(:column-major :padded :row-major)))
+      (check-batch 6 5 4 :transpose :no-transpose 1f0 1f0 kinds 1 '(0 0 0) path)
+      (check-batch 6 5 4 :transpose :no-transpose 1f0 1f0 kinds 1 '(99 -99 5) path)
+      (check-batch 6 5 4 :no-transpose :transpose 1f0 1f0 kinds 0 '(1 1 1) path))))
+
+(test sgemm-batch-strided-by-zero-alpha-or-empty-k-scales-c
+  (with-both-paths
+    (let ((kinds '(:row-major :row-major :padded)))
+      (check-batch 5 6 4 :no-transpose :no-transpose 0f0 2f0 kinds 3
+                   (packed-strides 5 6 4 :no-transpose :no-transpose kinds) path)
+      (check-batch 5 6 0 :no-transpose :no-transpose 1f0 -1f0 kinds 3
+                   (packed-strides 5 6 1 :no-transpose :no-transpose kinds) path))))
+
+(test sgemm-batch-strided-by-zero-beta-ignores-c
+  (float-features:with-float-traps-masked (:invalid :overflow :divide-by-zero :inexact)
+    (with-both-paths
+      (dolist (c-kind '(:row-major :column-major :padded))
+        (let ((kinds (list :row-major :row-major c-kind)))
+          (check-batch 7 9 5 :no-transpose :no-transpose 1f0 0f0 kinds 3
+                       (packed-strides 7 9 5 :no-transpose :no-transpose kinds)
+                       (format nil "~a ~a" path c-kind)
+                       :c-fill float-features:single-float-nan))))))
+
+(test sgemm-batch-strided-spans-a-large-batch
+  (with-both-paths
+    (check-batch 1 1 1 :no-transpose :no-transpose 2f0 1f0 '(:row-major :row-major :row-major)
+                 70000 '(1 1 1) path)
+    (check-batch 3 2 2 :no-transpose :no-transpose 1f0 0f0 '(:row-major :row-major :row-major)
+                 20000 '(0 4 6) path)))
+
+(test sgemm-batch-strided-leaves-the-rest-of-the-array-alone
+  (with-both-paths
+    (let* ((data (random-vector 60))
+           (before (copy-seq data)))
+      (gpu:with-gpu-array (g (gpu:to-device data))
+        (gpu:with-gpu-array (ones (gpu:to-device (make-array 24 :element-type 'single-float
+                                                                :initial-element 1f0)))
+          (blas:sgemm-batch-strided :no-transpose :no-transpose 1f0
+                                    (blas:make-matrix-view ones 2 3) (blas:make-matrix-view ones 3 2)
+                                    0f0 (blas:make-matrix-view g 2 2 :offset 5)
+                                    :batch-count 3 :a-stride 0 :b-stride 0 :c-stride 12)
+          (let ((after (gpu:from-device g)))
+            (dotimes (i 60)
+              (let ((written (loop for p below 3 thereis (<= 0 (- i 5 (* 12 p)) 3))))
+                (is (if written
+                        (close-p 3f0 (aref after i))
+                        (= (aref before i) (aref after i)))
+                    "element ~d" i)))))))))
+
 ;;; Validation, without a GPU
 
 (defclass mock-device ()
@@ -520,6 +658,64 @@ a reversed view is compared with the reversed data in row-major order."
       (is (= 1 (gemm 3 3 0 1f0 0f0)))
       (is (= 1 (gemm 3 3 3 0f0 2f0)))
       (is (= 1 (gemm 3 3 3 1f0 0f0))))))
+
+(test bad-batched-gemm-arguments-signal-gpu-error
+  (with-mock-arrays (device (a 40) (b 40) (c 40))
+    (flet ((batch (&rest keys &key (batch-count 3) (a-stride 4) (b-stride 4) (c-stride 4) &allow-other-keys)
+             (declare (ignore keys))
+             (blas:sgemm-batch-strided :no-transpose :no-transpose 1f0 (mock-view a 2 2)
+                                       (mock-view b 2 2) 0f0 (mock-view c 2 2)
+                                       :batch-count batch-count :a-stride a-stride
+                                       :b-stride b-stride :c-stride c-stride)))
+      (finishes (batch))
+      (signals gpu:gpu-error (batch :batch-count -1))
+      (signals gpu:gpu-error (batch :batch-count 1073741824))
+      (signals gpu:gpu-error (batch :batch-count 1.0))
+      (signals gpu:gpu-error (batch :a-stride 1.5))
+      (signals gpu:gpu-error (blas:sgemm-batch-strided :no-transpose :no-transpose 1f0
+                                                       (mock-view a 2 2) (mock-view b 2 2) 0f0
+                                                       (mock-view c 2 2) :batch-count 2 :a-stride 4
+                                                       :b-stride 4))
+      (signals gpu:gpu-error (batch :batch-count 11))
+      (signals gpu:gpu-error (batch :a-stride -4))
+      (signals gpu:gpu-error (batch :c-stride 14 :batch-count 4))
+      (finishes (batch :c-stride 13 :batch-count 3))
+      (is (= 2 (launches device))))))
+
+(test batched-gemm-outputs-must-be-written-once-and-apart-from-inputs
+  (with-mock-arrays (device (a 40) (b 40) (c 40))
+    (flet ((batch (c-stride &key (a-stride 4) (batch-count 3) (c-view (mock-view c 2 2)))
+             (blas:sgemm-batch-strided :no-transpose :no-transpose 1f0 (mock-view a 2 2)
+                                       (mock-view b 2 2) 0f0 c-view :batch-count batch-count
+                                       :a-stride a-stride :b-stride 0 :c-stride c-stride)))
+      (signals gpu:gpu-error (batch 0))
+      (signals gpu:gpu-error (batch 1))
+      (signals gpu:gpu-error (batch 3))
+      (signals gpu:gpu-error (batch 2 :c-view (mock-view c 2 2 :row-stride 1 :column-stride 4)))
+      (finishes (batch 0 :batch-count 1))
+      (finishes (batch 4))
+      (finishes (batch -4 :c-view (mock-view c 2 2 :offset 8)))
+      (signals gpu:gpu-error
+        (blas:sgemm-batch-strided :no-transpose :no-transpose 1f0 (mock-view a 2 2 :offset 8)
+                                  (mock-view b 2 2) 0f0 (mock-view a 2 2)
+                                  :batch-count 3 :a-stride 0 :b-stride 0 :c-stride 4))
+      (finishes (blas:sgemm-batch-strided :no-transpose :no-transpose 1f0 (mock-view a 2 2 :offset 12)
+                                          (mock-view b 2 2) 0f0 (mock-view a 2 2)
+                                          :batch-count 3 :a-stride 0 :b-stride 0 :c-stride 4)))))
+
+(test empty-and-trivial-batched-gemm-calls-launch-as-little-as-possible
+  (with-mock-arrays (device (a 80) (b 80) (c 80))
+    (flet ((batch (count alpha beta &optional (k 2))
+             (blas:sgemm-batch-strided :no-transpose :no-transpose alpha
+                                       (mock-view a 2 k :leading-dimension (max k 1))
+                                       (mock-view b k 2) beta (mock-view c 2 2)
+                                       :batch-count count :a-stride 4 :b-stride 4 :c-stride 4)
+             (prog1 (launches device) (setf (launches device) 0))))
+      (is (= 0 (batch 0 1f0 0f0)))
+      (is (= 0 (batch 5 0f0 1f0)))
+      (is (= 1 (batch 5 0f0 2f0)))
+      (is (= 1 (batch 5 1f0 0f0 0)))
+      (is (= 1 (batch 5 1f0 0f0))))))
 
 (test bad-gemv-arguments-signal-gpu-error
   (with-mock-arrays (device (a 12) (x 10) (y 10) (shared 30))

@@ -33,11 +33,12 @@ ELEMENT-TYPE and the layout are those of DEVICE-STORE."))
 ARGUMENTS are (:buffer buffer), (:bytes type value) or (:shared bytes) in parameter order.
 Return the backend's command, which has finished when WAIT."))
 
-(defgeneric device-gemm (device m n k alpha a b beta c)
-  (:documentation "Set the M by N matrix C to ALPHA*A*B + BETA*C, where A is M by K and B is K by N.
-A, B and C are (array offset row-stride column-stride) lists of f32 arrays; element (i j) is at
-offset + i*row-stride + j*column-stride. M, N and K are positive, ALPHA is not zero and C addresses
-each element once. Provided by cl-gpu/blas, which backends may specialize."))
+(defgeneric device-gemm (device m n k alpha a b beta c count)
+  (:documentation "Set COUNT M by N matrices C[i] to ALPHA*A[i]*B[i] + BETA*C[i], where A[i] is M by K and B[i] is K by N.
+A, B and C are (array offset row-stride column-stride batch-stride) lists of f32 arrays; element
+(i j) of product p is at offset + p*batch-stride + i*row-stride + j*column-stride. M, N, K and COUNT
+are positive, ALPHA is not zero and C addresses each element once. Provided by cl-gpu/blas, which
+backends may specialize."))
 
 (defgeneric device-gemv (device m n alpha a x beta y)
   (:documentation "Set the M elements of Y to ALPHA*A*X + BETA*Y, where A is M by N and X has N elements.

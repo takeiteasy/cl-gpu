@@ -66,13 +66,19 @@
 
 ;;; Matrix operands: a view after its transpose flag, as (rows, columns, strides) over an array.
 
-(defstruct (operand (:constructor make-operand (array offset row-stride column-stride rows cols)))
-  array offset row-stride column-stride rows cols)
+(defstruct (operand (:constructor make-operand
+                        (array offset row-stride column-stride rows cols
+                         &optional (batch-stride 0) (batch-count 1))))
+  array offset row-stride column-stride rows cols batch-stride batch-count)
 
 (defun operand-list (operand)
   "OPERAND as the (array offset row-stride column-stride) of the device protocol."
   (list (operand-array operand) (operand-offset operand)
         (operand-row-stride operand) (operand-column-stride operand)))
+
+(defun operand-batch-list (operand)
+  "OPERAND as the (array offset row-stride column-stride batch-stride) of DEVICE-GEMM."
+  (append (operand-list operand) (list (operand-batch-stride operand))))
 
 (defun transposed-p (name flag)
   (case flag
@@ -81,8 +87,8 @@
     (t (gpu-fail "~(~a~): the transpose flag is :no-transpose, :transpose or :conjugate-transpose, got ~s"
                  name flag))))
 
-(defun view-operand (name view flag)
-  "The operand for VIEW under the transpose FLAG."
+(defun view-operand (name view flag &optional (count 1) (batch-stride 0))
+  "The operand for VIEW under the transpose FLAG, repeated COUNT times BATCH-STRIDE elements apart."
   (let ((transposed (transposed-p name flag)))
     (unless (matrix-view-p view)
       (gpu-fail "~(~a~): expected a matrix view, got ~s" name view))
@@ -94,8 +100,8 @@
           (rows (matrix-view-rows view))
           (cols (matrix-view-cols view)))
       (if transposed
-          (make-operand data offset cs rs cols rows)
-          (make-operand data offset rs cs rows cols)))))
+          (make-operand data offset cs rs cols rows batch-stride count)
+          (make-operand data offset rs cs rows cols batch-stride count)))))
 
 (defun real-scalar (name label value)
   (unless (realp value)
@@ -105,12 +111,24 @@
 ;;; Regions: (array lowest highest) of the elements an operand or span visits, NIL when empty.
 
 (defun operand-region (operand)
+  "The region of every product of OPERAND's batch."
   (when (and (plusp (operand-rows operand)) (plusp (operand-cols operand)))
     (multiple-value-bind (low high)
         (extent-bounds (operand-offset operand)
-                       (list (operand-rows operand) (operand-cols operand))
-                       (list (operand-row-stride operand) (operand-column-stride operand)))
+                       (list (operand-rows operand) (operand-cols operand)
+                             (operand-batch-count operand))
+                       (list (operand-row-stride operand) (operand-column-stride operand)
+                             (operand-batch-stride operand)))
       (list (operand-array operand) low high))))
+
+(defun check-operand-bounds (name operand)
+  "Signal unless every product of OPERAND's batch lies inside its array."
+  (let ((region (operand-region operand)))
+    (when (and region
+               (not (and (<= 0 (second region))
+                         (< (third region) (gpu-array-length (first region))))))
+      (gpu-fail "~(~a~): the batch exceeds an array of ~d elements" name
+                (gpu-array-length (first region))))))
 
 (defun span-region (span)
   (when (plusp (span-count span))
@@ -129,16 +147,20 @@
       (gpu-fail "~(~a~): the output overlaps an input in one array" name))))
 
 (defun check-unique-output (name operand)
-  "Signal unless every element of OPERAND is addressed once, which writing it in parallel needs.
-Conservative: it refuses strides that interleave without sharing an element."
+  "Signal unless every element of every product of OPERAND is addressed once, which writing it in
+parallel needs. Conservative: it refuses strides that interleave without sharing an element."
   (let ((axes (sort (remove-if (lambda (axis) (<= (car axis) 1))
                                (list (cons (operand-rows operand) (abs (operand-row-stride operand)))
-                                     (cons (operand-cols operand) (abs (operand-column-stride operand)))))
+                                     (cons (operand-cols operand) (abs (operand-column-stride operand)))
+                                     (cons (operand-batch-count operand)
+                                           (abs (operand-batch-stride operand)))))
                     #'< :key #'cdr)))
     (unless (or (zerop (operand-rows operand))
                 (zerop (operand-cols operand))
+                (zerop (operand-batch-count operand))
                 (null axes)
                 (and (plusp (cdr (first axes)))
-                     (or (null (rest axes))
-                         (>= (cdr (second axes)) (* (car (first axes)) (cdr (first axes)))))))
+                     (loop for (inner outer) on axes
+                           while outer
+                           always (>= (cdr outer) (* (car inner) (cdr inner))))))
       (gpu-fail "~(~a~): the output addresses an element more than once" name))))

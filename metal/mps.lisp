@@ -10,20 +10,21 @@
     (setf (device-mps-support device) (/= 0 (%mps-supported (live-handle device)))))
   (device-mps-support device))
 
-;;; A spec is (array offset rows columns row-stride column-stride) in elements.
+;;; A spec is (array offset rows columns row-stride column-stride batch-stride) in elements.
 
 (defun spec (list rows columns)
-  (destructuring-bind (array offset row-stride column-stride) list
-    (list array offset rows columns row-stride column-stride)))
+  (destructuring-bind (array offset row-stride column-stride &optional (batch-stride 0)) list
+    (list array offset rows columns row-stride column-stride batch-stride)))
 
 (defun transpose-spec (spec)
-  (destructuring-bind (array offset rows columns row-stride column-stride) spec
-    (list array offset columns rows column-stride row-stride)))
+  (destructuring-bind (array offset rows columns row-stride column-stride batch-stride) spec
+    (list array offset columns rows column-stride row-stride batch-stride)))
 
-(defun mps-matrix (spec)
+(defun mps-matrix (spec &optional (count 1))
   "(transposed stored-rows stored-columns row-elements) for the row-major matrix MPS reads, or NIL.
-A column-major spec is the transpose of a row-major matrix. Strides must be positive."
-  (destructuring-bind (array offset rows columns row-stride column-stride) spec
+A column-major spec is the transpose of a row-major matrix. Strides must be positive. With COUNT
+products, the batch stride must keep each product in whole rows after the one before."
+  (destructuring-bind (array offset rows columns row-stride column-stride batch-stride) spec
     (let ((matrix (cond ((and (or (= columns 1) (= column-stride 1))
                               (or (= rows 1) (<= columns row-stride)))
                          (list nil rows columns (if (= rows 1) columns row-stride)))
@@ -31,48 +32,57 @@ A column-major spec is the transpose of a row-major matrix. Strides must be posi
                               (or (= columns 1) (<= rows column-stride)))
                          (list t columns rows (if (= columns 1) rows column-stride))))))
       (when (and matrix
-                 (<= (+ offset (* (second matrix) (fourth matrix))) (gpu:gpu-array-length array)))
+                 (or (= count 1)
+                     (and (plusp batch-stride)
+                          (zerop (mod batch-stride (fourth matrix)))
+                          (>= batch-stride (* (second matrix) (fourth matrix)))))
+                 (<= (+ offset (* (1- count) (if (= count 1) 0 batch-stride))
+                        (* (second matrix) (fourth matrix)))
+                     (gpu:gpu-array-length array)))
         matrix))))
 
-(defun row-major-p (spec)
-  (let ((matrix (mps-matrix spec)))
+(defun row-major-p (spec count)
+  (let ((matrix (mps-matrix spec count)))
     (and matrix (not (first matrix)))))
 
-(defun fill-matrix-shape (shapes index spec matrix)
+(defun fill-matrix-shape (shapes index spec matrix count)
+  "Store the five values of SPEC's MATRIX in SHAPES, which hold five per matrix."
   (destructuring-bind (stored-rows stored-columns row-elements) (rest matrix)
-    (loop for value in (list (* 4 (second spec)) stored-rows stored-columns (* 4 row-elements))
-          for slot from (* 4 index)
+    (loop for value in (list (* 4 (second spec)) stored-rows stored-columns (* 4 row-elements)
+                             (* 4 (if (= count 1) 0 (seventh spec))))
+          for slot from (* 5 index)
           do (setf (cffi:mem-aref shapes :unsigned-long slot) value))))
 
 (defun buffer-handle (spec)
   (live-handle (gpu::live-buffer (first spec))))
 
-(defun gemm-plan (m n k a b c)
-  "(left right result m n) as specs MPS can address for C = A*B + C, or NIL.
+(defun gemm-plan (m n k a b c count)
+  "(left right result m n) as specs MPS can address for C = A*B + C over COUNT products, or NIL.
 MPS writes a row-major result; a column-major C is computed as its transpose."
   (let ((a (spec a m k))
         (b (spec b k n))
         (c (spec c m n)))
     (flet ((plan (left right result m n)
-             (when (and (mps-matrix left) (mps-matrix right) (row-major-p result))
+             (when (and (mps-matrix left count) (mps-matrix right count) (row-major-p result count))
                (list left right result m n))))
       (or (plan a b c m n)
           (plan (transpose-spec b) (transpose-spec a) (transpose-spec c) n m)))))
 
-(defmethod gpu:device-gemm ((device metal-device) m n k alpha a b beta c)
-  (let ((plan (and *use-mps* (mps-supported-p device) (gemm-plan m n k a b c))))
+(defmethod gpu:device-gemm ((device metal-device) m n k alpha a b beta c count)
+  (let ((plan (and *use-mps* (mps-supported-p device) (gemm-plan m n k a b c count))))
     (if plan
         (destructuring-bind (left right result m n) plan
-          (cffi:with-foreign-objects ((buffers :pointer 3) (shapes :unsigned-long 12))
+          (cffi:with-foreign-objects ((buffers :pointer 3) (shapes :unsigned-long 15))
             (loop for spec in (list left right result)
                   for index from 0
                   do (setf (cffi:mem-aref buffers :pointer index) (buffer-handle spec))
-                     (fill-matrix-shape shapes index spec (mps-matrix spec)))
+                     (fill-matrix-shape shapes index spec (mps-matrix spec count) count))
             (multiple-value-bind (status message)
                 (with-error-slot (slot)
                   (%mps-gemm (device-queue device)
-                             (if (first (mps-matrix left)) 1 0) (if (first (mps-matrix right)) 1 0)
-                             m n k alpha beta buffers shapes slot))
+                             (if (first (mps-matrix left count)) 1 0)
+                             (if (first (mps-matrix right count)) 1 0)
+                             m n k alpha beta count buffers shapes slot))
               (unless (zerop status)
                 (fail "~a" (or message "gemm failed"))))))
         (call-next-method))))
@@ -83,13 +93,13 @@ MPS writes a row-major result; a column-major C is computed as its transpose."
                       (mps-matrix a-spec))))
     (if matrix
         (let ((transposed (first matrix)))
-          (cffi:with-foreign-objects ((buffers :pointer 3) (shapes :unsigned-long 8))
+          (cffi:with-foreign-objects ((buffers :pointer 3) (shapes :unsigned-long 9))
             (setf (cffi:mem-aref buffers :pointer 0) (buffer-handle a-spec)
                   (cffi:mem-aref buffers :pointer 1) (live-handle (gpu::live-buffer (first x)))
                   (cffi:mem-aref buffers :pointer 2) (live-handle (gpu::live-buffer (first y))))
-            (fill-matrix-shape shapes 0 a-spec matrix)
+            (fill-matrix-shape shapes 0 a-spec matrix 1)
             (loop for value in (list (* 4 (second x)) n (* 4 (second y)) m)
-                  for slot from 4
+                  for slot from 5
                   do (setf (cffi:mem-aref shapes :unsigned-long slot) value))
             (multiple-value-bind (status message)
                 (with-error-slot (slot)

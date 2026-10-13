@@ -152,19 +152,26 @@ int clgpu_command_wait(void *command, char **error) {
     }
 }
 
-// MetalPerformanceShaders. A matrix is described by four values: byte offset, rows, columns and
-// row bytes. Both calls return 0 on success. MPS rejects some bad arguments with an assertion that
+// MetalPerformanceShaders. A matrix is described by five values: byte offset, rows, columns, row
+// bytes and, for a batch, matrix bytes. Both calls return 0 on success. MPS rejects some bad arguments with an assertion that
 // aborts the process, so the caller passes only shapes it has checked.
 
 int clgpu_mps_supported(void *device) {
     return MPSSupportsMTLDevice((id<MTLDevice>)device) ? 1 : 0;
 }
 
-static MPSMatrix *new_matrix(void *buffer, const unsigned long *shape) {
-    MPSMatrixDescriptor *descriptor = [MPSMatrixDescriptor matrixDescriptorWithRows:shape[1]
-                                                                            columns:shape[2]
-                                                                           rowBytes:shape[3]
-                                                                           dataType:MPSDataTypeFloat32];
+static MPSMatrix *new_matrix(void *buffer, const unsigned long *shape, unsigned long count) {
+    MPSMatrixDescriptor *descriptor =
+        count == 1 ? [MPSMatrixDescriptor matrixDescriptorWithRows:shape[1]
+                                                           columns:shape[2]
+                                                          rowBytes:shape[3]
+                                                          dataType:MPSDataTypeFloat32]
+                   : [MPSMatrixDescriptor matrixDescriptorWithRows:shape[1]
+                                                           columns:shape[2]
+                                                          matrices:count
+                                                          rowBytes:shape[3]
+                                                       matrixBytes:shape[4]
+                                                          dataType:MPSDataTypeFloat32];
     return [[MPSMatrix alloc] initWithBuffer:(id<MTLBuffer>)buffer offset:shape[0] descriptor:descriptor];
 }
 
@@ -187,32 +194,39 @@ static int finish(id<MTLCommandBuffer> command, char **error) {
 
 // MPS reads the result even when BETA is 0, so a NaN there would survive. Clear it first.
 static void clear_bytes(id<MTLCommandBuffer> command, void *buffer, unsigned long offset,
-                        unsigned long rows, unsigned long row_length, unsigned long row_bytes) {
+                        unsigned long rows, unsigned long row_length, unsigned long row_bytes,
+                        unsigned long count, unsigned long matrix_bytes) {
     id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
-    if (row_length == row_bytes) {
-        [blit fillBuffer:(id<MTLBuffer>)buffer range:NSMakeRange(offset, rows * row_length) value:0];
+    if (row_length == row_bytes && (count == 1 || matrix_bytes == rows * row_bytes)) {
+        [blit fillBuffer:(id<MTLBuffer>)buffer
+                   range:NSMakeRange(offset, count * rows * row_length)
+                   value:0];
     } else {
-        for (unsigned long row = 0; row < rows; row++)
-            [blit fillBuffer:(id<MTLBuffer>)buffer
-                       range:NSMakeRange(offset + row * row_bytes, row_length)
-                       value:0];
+        for (unsigned long product = 0; product < count; product++)
+            for (unsigned long row = 0; row < rows; row++)
+                [blit fillBuffer:(id<MTLBuffer>)buffer
+                           range:NSMakeRange(offset + product * matrix_bytes + row * row_bytes,
+                                             row_length)
+                           value:0];
     }
     [blit endEncoding];
 }
 
-// RESULT = ALPHA * op(LEFT) * op(RIGHT) + BETA * RESULT, with RESULT of M by N and K columns inside.
-// BUFFERS and SHAPES hold the left, right and result matrices in that order.
+// One encode covers at most this many products; MPS leaves the rest unwritten.
+#define MPS_MAX_BATCH 65535
+
+// RESULT = ALPHA * op(LEFT) * op(RIGHT) + BETA * RESULT, with RESULT of M by N and K columns inside,
+// for each of COUNT products. BUFFERS and SHAPES hold the left, right and result matrices in that
+// order.
 int clgpu_mps_gemm(void *queue, int transpose_left, int transpose_right,
                    unsigned long m, unsigned long n, unsigned long k, float alpha, float beta,
-                   void *const *buffers, const unsigned long *shapes, char **error) {
+                   unsigned long count, void *const *buffers, const unsigned long *shapes,
+                   char **error) {
     @autoreleasepool {
-        MPSMatrix *matrices[3] = {nil, nil, nil};
         MPSMatrixMultiplication *multiplication = nil;
         int status = 1;
         @try {
             id<MTLCommandQueue> commandQueue = (id<MTLCommandQueue>)queue;
-            for (int i = 0; i < 3; i++)
-                matrices[i] = new_matrix(buffers[i], shapes + 4 * i);
             multiplication = [[MPSMatrixMultiplication alloc] initWithDevice:[commandQueue device]
                                                                transposeLeft:transpose_left
                                                               transposeRight:transpose_right
@@ -223,24 +237,33 @@ int clgpu_mps_gemm(void *queue, int transpose_left, int transpose_right,
                                                                         beta:beta];
             id<MTLCommandBuffer> command = [commandQueue commandBuffer];
             if (beta == 0)
-                clear_bytes(command, buffers[2], shapes[8], shapes[9], shapes[10] * 4, shapes[11]);
-            [multiplication encodeToCommandBuffer:command
-                                       leftMatrix:matrices[0]
-                                      rightMatrix:matrices[1]
-                                     resultMatrix:matrices[2]];
+                clear_bytes(command, buffers[2], shapes[10], shapes[11], shapes[12] * 4, shapes[13],
+                            count, shapes[14]);
+            for (unsigned long start = 0; start < count; start += MPS_MAX_BATCH) {
+                unsigned long chunk = MIN(MPS_MAX_BATCH, count - start);
+                MPSMatrix *matrices[3];
+                for (int i = 0; i < 3; i++) {
+                    unsigned long shape[5];
+                    memcpy(shape, shapes + 5 * i, sizeof shape);
+                    shape[0] += start * shape[4];
+                    matrices[i] = [new_matrix(buffers[i], shape, chunk) autorelease];
+                }
+                [multiplication encodeToCommandBuffer:command
+                                           leftMatrix:matrices[0]
+                                          rightMatrix:matrices[1]
+                                         resultMatrix:matrices[2]];
+            }
             status = finish(command, error);
         } @catch (NSException *exception) {
             set_error(error, [exception reason]);
         }
-        for (int i = 0; i < 3; i++)
-            [matrices[i] release];
         [multiplication release];
         return status;
     }
 }
 
 // RESULT = ALPHA * op(MATRIX) * INPUT + BETA * RESULT, where op(MATRIX) is ROWS by COLUMNS.
-// BUFFERS holds the matrix, input and result vector; SHAPES the matrix's four values, then the
+// BUFFERS holds the matrix, input and result vector; SHAPES the matrix's five values, then the
 // byte offset and length of the input and of the result.
 int clgpu_mps_gemv(void *queue, int transpose, unsigned long rows, unsigned long columns,
                    float alpha, float beta, void *const *buffers, const unsigned long *shapes,
@@ -252,9 +275,9 @@ int clgpu_mps_gemv(void *queue, int transpose, unsigned long rows, unsigned long
         int status = 1;
         @try {
             id<MTLCommandQueue> commandQueue = (id<MTLCommandQueue>)queue;
-            matrix = new_matrix(buffers[0], shapes);
-            input = new_vector(buffers[1], shapes[4], shapes[5]);
-            result = new_vector(buffers[2], shapes[6], shapes[7]);
+            matrix = new_matrix(buffers[0], shapes, 1);
+            input = new_vector(buffers[1], shapes[5], shapes[6]);
+            result = new_vector(buffers[2], shapes[7], shapes[8]);
             multiplication = [[MPSMatrixVectorMultiplication alloc] initWithDevice:[commandQueue device]
                                                                          transpose:transpose
                                                                               rows:rows
@@ -263,7 +286,7 @@ int clgpu_mps_gemv(void *queue, int transpose, unsigned long rows, unsigned long
                                                                               beta:beta];
             id<MTLCommandBuffer> command = [commandQueue commandBuffer];
             if (beta == 0)
-                clear_bytes(command, buffers[2], shapes[6], 1, shapes[7] * 4, shapes[7] * 4);
+                clear_bytes(command, buffers[2], shapes[7], 1, shapes[8] * 4, shapes[8] * 4, 1, 0);
             [multiplication encodeToCommandBuffer:command
                                       inputMatrix:matrix
                                       inputVector:input

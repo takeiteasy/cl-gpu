@@ -7,4 +7,4 @@
            #:matrix-view-data #:matrix-view-rows #:matrix-view-cols #:matrix-view-layout
            #:matrix-view-leading-dimension #:matrix-view-row-stride #:matrix-view-column-stride
            #:matrix-view-offset
-           #:sgemv #:sgemm))
+           #:sgemv #:sgemm #:sgemm-batch-strided))
