@@ -10,6 +10,7 @@
   (when clauses
     (destructuring-bind ((test &rest body) &rest more) clauses
       (cond ((null body) (if more `(or ,test (cond ,@more)) test))
+            ((eq test t) `(progn ,@body))
             (more `(if ,test (progn ,@body) (cond ,@more)))
             (t `(if ,test (progn ,@body)))))))
 

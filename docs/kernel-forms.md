@@ -1,6 +1,6 @@
 # Kernel forms
 
-Kernels are Lisp forms. `read-kernel` reads text into forms that carry source locations, and `walk-kernel` turns a form into a tree of resolved AST nodes.
+Kernels are Lisp forms. `read-kernel` reads text into forms that carry source locations, and `walk-kernel` turns a form into a tree of resolved AST nodes. `lower-kernel` types that tree into [IR](kernel-ir.md); the [types](types.md) and [intrinsics](intrinsics.md) pages describe what it accepts.
 
 ```lisp
 (let ((forms (cl-gpu:read-kernel-from-string "(dotimes (i n) (incf (aref out i) 1))")))
@@ -34,8 +34,8 @@ Kernels are Lisp forms. `read-kernel` reads text into forms that carry source lo
 | `(while test body)` | |
 | `(macrolet ((name lambda-list body)) form ...)` | local kernel macros |
 | `(symbol-macrolet ((name expansion)) form ...)` | `setf` works through them |
-| `(f arg ...)` | a call. The IR resolves intrinsics |
-| `(declare ...)` | leading form of `let`, `let*`, `for`, `while`; kept as written |
+| `(f arg ...)` | a call. Lowering resolves operators and [intrinsics](intrinsics.md) |
+| `(declare (type T v ...))` | leading form of `let`, `let*`, `for`, `while`; sets the [type](types.md) of variables |
 
 `for` and `while` wrap themselves in a `nil` block, so `(return)` leaves the loop.
 
@@ -43,7 +43,7 @@ Kernels are Lisp forms. `read-kernel` reads text into forms that carry source lo
 
 | Macro | Expands to |
 |---|---|
-| `when`, `unless`, `cond` | `if` |
+| `when`, `unless`, `cond` | `if`. A `cond` clause tested by `t` ends the chain |
 | `case` | `let` and `cond` over `=` tests. Keys are numbers |
 | `dotimes` | `for` over `0` to the count, evaluated once. No result form |
 | `return` | `return-from nil` |

@@ -21,7 +21,7 @@ The cl-webgpu shader DSL (a 3bgl-shaders fork) informs the inference tests but c
 |---|---|---|---|
 | 0 | Skeleton | | Done |
 | 1 | Eclector reader and compute-subset walker | [#1](https://github.com/communal-software/cl-gpu/issues/1) | Done |
-| 2 | Type set and kernel IR | [#2](https://github.com/communal-software/cl-gpu/issues/2) | Open |
+| 2 | Type set and kernel IR | [#2](https://github.com/communal-software/cl-gpu/issues/2) | Done |
 | 3 | C-like printer base and MSL printer | [#3](https://github.com/communal-software/cl-gpu/issues/3) | Open |
 | 4 | Metal runtime | [#4](https://github.com/communal-software/cl-gpu/issues/4) | Open |
 | 5 | `define-kernel` and buffer API | [#5](https://github.com/communal-software/cl-gpu/issues/5) | Open |
@@ -30,8 +30,13 @@ The cl-webgpu shader DSL (a 3bgl-shaders fork) informs the inference tests but c
 
 ## Limitations
 
-No kernels compile yet: the walker produces an AST that nothing consumes.
+No kernels compile to source yet: lowering produces IR that no printer consumes.
 
 - No `loop`, `do`, `tagbody` or `go` ([kernel forms](kernel-forms.md)).
 - No `flet` or `labels` ([#8](https://github.com/communal-software/cl-gpu/issues/8)).
 - `incf` and `decf` through a symbol macro evaluate the place's subforms twice ([#9](https://github.com/communal-software/cl-gpu/issues/9)).
+- Vectors lack swizzles and scalar broadcast ([#10](https://github.com/communal-software/cl-gpu/issues/10)).
+- No local arrays or static shared memory ([#11](https://github.com/communal-software/cl-gpu/issues/11)).
+- CUDA needs operators for vector types ([#12](https://github.com/communal-software/cl-gpu/issues/12)).
+- No pointer arithmetic ([#13](https://github.com/communal-software/cl-gpu/issues/13)).
+- `mod` is unsigned only and `rem` is integer only ([#14](https://github.com/communal-software/cl-gpu/issues/14)).

@@ -1,8 +1,5 @@
 (in-package #:cl-gpu)
 
-(defvar *current-source* nil
-  "Source of the nearest enclosing form that has one.")
-
 (defvar *expansion-depth* 0)
 
 (defvar *walkers* (make-hash-table :test 'eq))
@@ -115,6 +112,8 @@
            (make-var-ref :binding entry :source *current-source*))
           (entry
            (with-expansion (cst) (walk (cdr entry) env)))
+          ((type-name-symbol-p name)
+           (make-literal :value name :source *current-source*))
           (t (walk-error cst "unbound variable ~s" name)))))
 
 (defun walk-cons (cst env)

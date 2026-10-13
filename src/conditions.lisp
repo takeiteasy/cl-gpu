@@ -1,5 +1,8 @@
 (in-package #:cl-gpu)
 
+(defvar *current-source* nil
+  "Source of the nearest enclosing form that has one.")
+
 (defstruct (source-location (:constructor make-source-location
                                 (file start end line column)))
   "A character range in kernel text. LINE and COLUMN are 1-based and locate START."
@@ -23,3 +26,5 @@
 (define-condition kernel-read-error (kernel-error) ())
 
 (define-condition kernel-syntax-error (kernel-error) ())
+
+(define-condition kernel-type-error (kernel-error) ())

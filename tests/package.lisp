@@ -41,3 +41,19 @@
   "Run BODY, which must signal TYPE, and return the (line column) of the error."
   `(handler-case (progn ,@body (error "no error signalled"))
      (,type (condition) (error-position condition))))
+
+(defun lower-text (text &key (arguments "()"))
+  "Lower the kernel TEXT. ARGUMENTS is the text of the parameter list."
+  (let ((*package* (find-package '#:cl-gpu/tests/kernel)))
+    (gpu:lower-kernel (read-one text)
+                      :arguments (read-from-string arguments))))
+
+(defun ir-nodes-of-type (type node)
+  (let ((found '()))
+    (gpu:map-ir (lambda (child) (when (typep child type) (push child found)))
+                node)
+    (nreverse found)))
+
+(defun type-of-spec (spec-text)
+  (let ((*package* (find-package '#:cl-gpu/tests/kernel)))
+    (gpu:parse-type (read-from-string spec-text))))

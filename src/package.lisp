@@ -12,6 +12,49 @@
    #:*max-expansion-depth*
    #:for
    #:while
+   ;; Types
+   #:f16 #:bf16 #:f32 #:f64
+   #:i8 #:i16 #:i32 #:i64
+   #:u8 #:u16 #:u32 #:u64
+   #:bool #:vec #:ptr #:atomic
+   #:parse-type #:type-spec #:type-description #:type-support
+   #:gpu-type
+   #:scalar-type #:scalar-type-name #:scalar-type-kind #:scalar-type-bits
+   #:vector-type #:vector-type-element #:vector-type-length
+   #:pointer-type #:pointer-type-pointee #:pointer-type-space
+   #:atomic-type #:atomic-type-element
+   ;; Intrinsics
+   #:global-id #:local-id #:group-id #:group-size #:grid-size #:barrier
+   #:atomic-add #:atomic-sub #:atomic-min #:atomic-max
+   #:atomic-and #:atomic-or #:atomic-xor #:atomic-exchange
+   #:atomic-cas #:atomic-load #:atomic-store
+   #:convert #:bitcast #:shl #:shr
+   #:pow #:rsqrt #:fma #:clamp
+   #:find-intrinsic #:intrinsic-name #:intrinsic-signature #:intrinsic-impure-p
+   #:intrinsic-spelling
+   ;; Lowering
+   #:lower-kernel
+   #:kernel-type-error
+   #:map-ir
+   #:ir-variable #:ir-variable-name #:ir-variable-type #:ir-variable-id #:ir-variable-temp
+   #:ir-kernel #:ir-kernel-name #:ir-kernel-parameters #:ir-kernel-body #:ir-kernel-scalar-types
+   #:ir-expr-type
+   #:ir-literal #:ir-literal-value
+   #:ir-var #:ir-var-variable
+   #:ir-op #:ir-op-operator #:ir-op-operands
+   #:ir-ternary #:ir-ternary-test #:ir-ternary-then #:ir-ternary-else
+   #:ir-index #:ir-index-base #:ir-index-index
+   #:ir-component #:ir-component-base #:ir-component-index
+   #:ir-construct #:ir-construct-args
+   #:ir-convert #:ir-convert-kind #:ir-convert-operand
+   #:ir-intrinsic #:ir-intrinsic-intrinsic #:ir-intrinsic-args #:ir-intrinsic-options
+   #:ir-declare #:ir-declare-variable #:ir-declare-init
+   #:ir-assign #:ir-assign-target #:ir-assign-value
+   #:ir-if #:ir-if-test #:ir-if-then #:ir-if-else
+   #:ir-for #:ir-for-variable #:ir-for-init #:ir-for-test #:ir-for-step #:ir-for-body
+   #:ir-while #:ir-while-test #:ir-while-body
+   #:ir-break #:ir-return
+   #:ir-expr-stmt #:ir-expr-stmt-expr
    ;; Conditions
    #:source-location
    #:source-location-file
