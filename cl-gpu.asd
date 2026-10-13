@@ -5,15 +5,26 @@
   :author "George Watson <gigolo@hotmail.co.uk>"
   :license "GPL-3.0-only"
   :version "0.0.0"
+  :depends-on ("eclector" "eclector-concrete-syntax-tree" "concrete-syntax-tree")
   :serial t
-  :components ((:file "package"))
+  :components ((:module "src"
+                :serial t
+                :components ((:file "package")
+                             (:file "conditions")
+                             (:file "ast")
+                             (:file "reader")
+                             (:file "env")
+                             (:file "walker")
+                             (:file "macros"))))
   :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/tests"))))
 
 (asdf:defsystem "cl-gpu/tests"
   :depends-on ("cl-gpu" "fiveam")
   :serial t
   :components ((:file "tests/package")
-               (:file "tests/smoke"))
+               (:file "tests/smoke")
+               (:file "tests/reader")
+               (:file "tests/walker"))
   :perform (asdf:test-op (op component)
              (declare (ignore op component))
              (unless (uiop:symbol-call :cl-gpu/tests :run-tests)

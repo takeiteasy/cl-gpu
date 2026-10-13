@@ -7,7 +7,7 @@ cl-gpu compiles Lisp kernel forms to Metal, CUDA and OpenCL source and runs them
 | Part | Choice |
 |---|---|
 | Reader | Eclector |
-| Walker | New, compute-only: fixed special forms plus macroexpansion |
+| Walker | New, compute-only: fixed special forms plus kernel macroexpansion, walking CSTs into AST nodes |
 | Types | Closed set: scalars, fixed vectors, typed pointers with address spaces |
 | IR | Small C-like tree mapping near 1:1 onto MSL, CUDA C and OpenCL C |
 | Printers | Shared C-like base with per-target overrides |
@@ -20,7 +20,7 @@ The cl-webgpu shader DSL (a 3bgl-shaders fork) informs the inference tests but c
 | # | Deliverable | Ticket | Status |
 |---|---|---|---|
 | 0 | Skeleton | | Done |
-| 1 | Eclector reader and compute-subset walker | [#1](https://github.com/communal-software/cl-gpu/issues/1) | Open |
+| 1 | Eclector reader and compute-subset walker | [#1](https://github.com/communal-software/cl-gpu/issues/1) | Done |
 | 2 | Type set and kernel IR | [#2](https://github.com/communal-software/cl-gpu/issues/2) | Open |
 | 3 | C-like printer base and MSL printer | [#3](https://github.com/communal-software/cl-gpu/issues/3) | Open |
 | 4 | Metal runtime | [#4](https://github.com/communal-software/cl-gpu/issues/4) | Open |
@@ -30,4 +30,8 @@ The cl-webgpu shader DSL (a 3bgl-shaders fork) informs the inference tests but c
 
 ## Limitations
 
-No kernels compile yet.
+No kernels compile yet: the walker produces an AST that nothing consumes.
+
+- No `loop`, `do`, `tagbody` or `go` ([kernel forms](kernel-forms.md)).
+- No `flet` or `labels` ([#8](https://github.com/communal-software/cl-gpu/issues/8)).
+- `incf` and `decf` through a symbol macro evaluate the place's subforms twice ([#9](https://github.com/communal-software/cl-gpu/issues/9)).

@@ -4,7 +4,7 @@
 
 S-expression GPU kernel DSL for Common Lisp with Metal, CUDA and OpenCL backends.
 
-See the [plan](docs/PLAN.md) for status and phases.
+See the [plan](docs/PLAN.md) for status and phases, and [kernel forms](docs/kernel-forms.md) for the forms a kernel can use.
 
 ## Tests
 
