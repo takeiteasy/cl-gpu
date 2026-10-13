@@ -454,3 +454,51 @@
     (fails "(= p s)")
     (fails "(< p x)")
     (fails "(< p 0)")))
+
+;;; Vector broadcast and swizzles
+
+(test scalars-broadcast-to-vector-operands
+  (flet ((result-type (text)
+           (gpu:ir-expr-type (declared-init text "((v (vec f32 4)) (w (vec i32 2)) (x f32))"))))
+    (is (eq (type-of-spec "(vec f32 4)") (result-type "(let ((r (* v 2.0))) r)")))
+    (is (eq (type-of-spec "(vec f32 4)") (result-type "(let ((r (+ 1 v))) r)")))
+    (is (eq (type-of-spec "(vec f32 4)") (result-type "(let ((r (- x v))) r)")))
+    (is (eq (type-of-spec "(vec i32 2)") (result-type "(let ((r (mod w 3))) r)")))
+    (is (eq (type-of-spec "(vec f32 4)") (result-type "(let ((r (/ v (* 2 x)))) r)"))))
+  (let ((init (declared-init "(let ((r (* v 2.0))) r)" "((v (vec f32 4)))")))
+    (is (typep (second (gpu:ir-op-operands init)) 'gpu:ir-construct))
+    (is (= 1 (length (gpu:ir-construct-args (second (gpu:ir-op-operands init))))))))
+
+(test broadcast-needs-the-element-type
+  (flet ((fails (text)
+           (signals gpu:kernel-type-error
+             (lower-text text :arguments "((v (vec f32 4)) (w (vec f32 2)) (i i32) (h f16))"))))
+    (fails "(* v i)")
+    (fails "(* v h)")
+    (fails "(+ v w)")
+    (fails "(let ((r (< v 1.0))) r)")
+    (fails "(let ((r (max v 1.0))) r)")))
+
+(test swizzles-pick-components
+  (flet ((result-type (text)
+           (gpu:ir-expr-type (declared-init text "((v (vec f32 4)) (u (vec i32 2)))"))))
+    (is (eq (type-of-spec "f32") (result-type "(let ((r (swizzle v :w))) r)")))
+    (is (eq (type-of-spec "(vec f32 2)") (result-type "(let ((r (swizzle v :zx))) r)")))
+    (is (eq (type-of-spec "(vec f32 4)") (result-type "(let ((r (swizzle v :rrab))) r)")))
+    (is (eq (type-of-spec "(vec i32 3)") (result-type "(let ((r (swizzle u :xyx))) r)"))))
+  (is (equal '(2 0)
+             (gpu:ir-swizzle-components
+              (declared-init "(let ((r (swizzle v :zx))) r)" "((v (vec f32 4)))")))))
+
+(test swizzles-check-their-operands
+  (flet ((fails (text)
+           (signals gpu:kernel-type-error
+             (lower-text text :arguments "((v (vec f32 3)) (x f32) (o (ptr f32 :global)))"))))
+    (fails "(swizzle x :x)")
+    (fails "(swizzle v :w)")
+    (fails "(swizzle v :xr)")
+    (fails "(swizzle v :xyzwx)")
+    (fails "(swizzle v :q)")
+    (fails "(swizzle v x)")
+    (fails "(swizzle v)")
+    (fails "(setf (swizzle v :x) 1.0)")))

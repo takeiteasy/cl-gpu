@@ -162,6 +162,15 @@
         (when (and (< q p) (= p p)) (setf (aref q 0) 2.0))
         (setf (aref d 0) (ptr- q p)))"
      "((p (ptr f32 :global)) (c (ptr (atomic u32) :global)) (d (ptr i64 :global)) (i u32))")
+    ("vectors"
+     "(let ((a (aref vs 0)))
+        (setf (aref vs 1) (+ (* a 2.0) (/ 1 (swizzle a :wzyx))))
+        (setf (aref vs 2) (- x a))
+        (setf (aref ws 0) (mod (aref ws 1) 3))
+        (setf (aref o 0) (+ (swizzle a :b) (aref (swizzle a :xy) 1)))
+        (setf (aref us 0) (vec f32 (swizzle a :r) (swizzle a :g) (swizzle a :b))))"
+     "((vs (ptr (vec f32 4) :global)) (ws (ptr (vec i32 2) :global)) (o (ptr f32 :global))
+       (us (ptr (vec f32 3) :global)) (x f32))")
     ("remainders"
      "(progn
         (setf (aref o 0) (mod (aref o 1) (aref o 2)))
@@ -201,6 +210,14 @@
     (is (contains-p floats "cl_gpu_fmod(o[1], 3.0f)"))
     (is (not (contains-p plain "cl_gpu_")))
     (is (contains-p plain "o[1] % 3"))))
+
+(test broadcasts-and-swizzles-print-as-constructors-and-selectors
+  (let ((text (kernel-text "(let ((v (aref vs 0)))
+                              (setf (aref vs 1) (* v 2.0))
+                              (setf (aref o 0) (aref (swizzle v :zx) 0)))"
+                           :arguments "((vs (ptr (vec f32 4) :global)) (o (ptr f32 :global)))")))
+    (is (contains-p text "v_3 * float4(2.0f)"))
+    (is (contains-p text "v_3.zx.x"))))
 
 (test pointer-comparisons-print-as-c
   (let ((text (kernel-text "(when (and (/= p q) (< p (ptr+ q 1))) (setf (aref p 0) 1.0))"

@@ -233,6 +233,12 @@
                   (char "xyzw" (ir-literal-value (ir-component-index expr))))
           +postfix-precedence+))
 
+(defmethod render ((printer c-printer) (expr ir-swizzle))
+  (values (format nil "~a.~{~a~}"
+                  (expr-text printer (ir-swizzle-base expr) +postfix-precedence+)
+                  (mapcar (lambda (index) (char "xyzw" index)) (ir-swizzle-components expr)))
+          +postfix-precedence+))
+
 (defmethod render ((printer c-printer) (expr ir-construct))
   (values (format nil "~a(~{~a~^, ~})" (type-text printer (ir-expr-type expr))
                   (mapcar (lambda (arg) (expr-text printer arg)) (ir-construct-args expr)))

@@ -61,6 +61,22 @@ Literals adopt the type they meet:
 
 A constant expression such as `(* 2 3)` adopts a type as one literal does. The reader decides whether `1.5` is a `single-float` or a `double-float`[^1].
 
+## Vectors
+
+Arithmetic on a vector takes another vector of its type, or a scalar of its element type, which applies to every component.
+
+```lisp
+(* v 2.0)               ; v is (vec f32 4): every component doubled
+(+ 1.0 v)
+(mod k 3)               ; k is (vec i32 2)
+(swizzle v :zx)         ; (vec f32 2), components 2 and 0
+(swizzle v :w)          ; f32
+```
+
+- A scalar must match the element type exactly: `(* v i)` with `i32` is an error. Literals adopt it.
+- `swizzle` takes 1 to 4 components, which may repeat. Use `xyzw` or `rgba`, not both. A swizzle is read-only; assign with `(setf (aref v 0) ...)`.
+- Comparisons stay scalar-only, since the type set has no bool vectors. `min`, `max`, `clamp`, `pow` and `fma` need vectors of one type.
+
 ## Pointer arithmetic
 
 | Form | Result |

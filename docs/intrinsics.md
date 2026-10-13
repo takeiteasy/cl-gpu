@@ -62,6 +62,7 @@ An atomic in value position runs where it is written and its result is bound to 
 | `(bitcast type x)` | reinterpret bits between types of one size |
 | `(vec type a b ...)` | build a vector from 2 to 4 components |
 | `(aref v 0)` | vector component, the index is a literal |
+| `(swizzle v :xz)` | 1 to 4 components of a vector, [read-only](types.md#vectors) |
 
 ## Spellings
 

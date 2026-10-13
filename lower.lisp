@@ -167,12 +167,17 @@ operand's statements are bound to temporaries, keeping left-to-right order."
 (defun numeric-scalar-p (type)
   (and (scalar-type-p type) (numeric-type-p type)))
 
-(defun lower-agreeing (nodes hint)
+(defun broadcast (expr vector-type)
+  (make-ir-construct :args (list expr) :type vector-type))
+
+(defun lower-agreeing (nodes hint &key broadcast)
   "Lower NODES to expressions of one type. Return the expressions, the statements each
-needed, and the type. Non-constant nodes decide the type; constants adopt it."
+needed, and the type. Non-constant nodes decide the type; constants adopt it. With
+BROADCAST, a vector among the nodes decides the type and a scalar of its element type is widened."
   (let* ((exprs (make-array (length nodes)))
          (statements (make-array (length nodes) :initial-element '()))
-         (type nil))
+         (type nil)
+         (lowered-types '()))
     (flet ((lower-at (index node hint)
              (multiple-value-bind (expr node-statements) (capturing (lower-value node hint))
                (setf (aref exprs index) expr
@@ -182,21 +187,30 @@ needed, and the type. Non-constant nodes decide the type; constants adopt it."
             for index from 0
             unless (constant-node-p node)
               do (let ((expr (lower-at index node (or type hint))))
+                   (push (ir-expr-type expr) lowered-types)
                    (unless type (setf type (ir-expr-type expr)))))
+      (when broadcast
+        (setf type (or (find-if #'vector-type-p lowered-types) type)))
       (when (some #'constant-node-p nodes)
-        (let ((constant-type (or type
-                                 (and (numeric-scalar-p hint) hint)
-                                 (default-constant-type (remove-if-not #'constant-node-p nodes)))))
+        (let ((constant-type (cond ((vector-type-p type) (vector-type-element type))
+                                   (type)
+                                   ((numeric-scalar-p hint) hint)
+                                   (t (default-constant-type
+                                       (remove-if-not #'constant-node-p nodes))))))
           (loop for node in nodes
                 for index from 0
                 when (constant-node-p node)
                   do (lower-at index node constant-type))
           (setf type (or type constant-type)))))
     (loop for node in nodes
-          for expr across exprs
+          for index from 0
+          for expr = (aref exprs index)
           unless (eq (ir-expr-type expr) type)
-            do (type-fail node "expected ~a, got ~a"
-                          (type-description type) (type-description (ir-expr-type expr))))
+            do (if (and broadcast (vector-type-p type)
+                        (eq (ir-expr-type expr) (vector-type-element type)))
+                   (setf (aref exprs index) (broadcast expr type))
+                   (type-fail node "expected ~a, got ~a"
+                              (type-description type) (type-description (ir-expr-type expr)))))
     (values (coerce exprs 'list) (coerce statements 'list) type)))
 
 (defun lower-sequence (nodes &optional hint-function)
@@ -584,7 +598,7 @@ needed, and the type. Non-constant nodes decide the type; constants adopt it."
 
 (defun lower-arith (node operator args hint predicate what)
   "A left fold of the binary OPERATOR over operands of one type."
-  (multiple-value-bind (exprs statements type) (lower-agreeing args hint)
+  (multiple-value-bind (exprs statements type) (lower-agreeing args hint :broadcast t)
     (check-operands node type predicate what)
     (reduce (lambda (a b) (make-op operator (list a b) type))
             (assemble-operands exprs statements))))
@@ -615,7 +629,7 @@ needed, and the type. Non-constant nodes decide the type; constants adopt it."
 (defun lower-remainder (node args hint floored)
   "REM, or MOD when FLOORED. Floats and floored signed integers go through an intrinsic."
   (check-arity node args 2 2)
-  (multiple-value-bind (exprs statements type) (lower-agreeing args hint)
+  (multiple-value-bind (exprs statements type) (lower-agreeing args hint :broadcast t)
     (check-operands node type #'numeric-type-p "numeric")
     (let ((operands (assemble-operands exprs statements))
           (intrinsic (cond ((and floored (not (unsigned-type-p type))) '%floor-mod)
@@ -817,6 +831,36 @@ needed, and the type. Non-constant nodes decide the type; constants adopt it."
       (type-fail node "cannot reinterpret ~a as ~a"
                  (type-description source) (type-description target)))
     (make-ir-convert :kind :bitcast :operand operand :type target)))
+
+;;; swizzle
+
+(defun swizzle-indices (node spec length)
+  "The component indices that the keyword SPEC names in a vector of LENGTH."
+  (let* ((letters (string-downcase (symbol-name spec)))
+         (set (find-if (lambda (set) (every (lambda (char) (find char set)) letters))
+                       '("xyzw" "rgba"))))
+    (unless (and set (<= 1 (length letters) 4))
+      (type-fail node "a swizzle names 1 to 4 components from xyzw or rgba, got ~(~s~)" spec))
+    (map 'list (lambda (char)
+                 (let ((index (position char set)))
+                   (unless (< index length)
+                     (type-fail node "component ~a does not exist in a vector of ~d" char length))
+                   index))
+         letters)))
+
+(define-operator swizzle (node args hint)
+  (check-arity node args 2 2)
+  (let* ((base (lower-value (first args) nil))
+         (type (ir-expr-type base)))
+    (unless (vector-type-p type)
+      (type-fail (first args) "swizzle needs a vector, got ~a" (type-description type)))
+    (let* ((spec (literal-argument (second args) #'keywordp "a component keyword such as :xy"))
+           (indices (swizzle-indices (second args) spec (vector-type-length type)))
+           (element (vector-type-element type)))
+      (make-ir-swizzle :base base :components indices
+                       :type (if (rest indices)
+                                 (parse-type `(vec ,(type-spec element) ,(length indices)))
+                                 element)))))
 
 ;;; Intrinsics
 

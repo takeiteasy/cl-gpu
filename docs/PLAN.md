@@ -52,9 +52,10 @@ OpenCL goes first when the backends start, as the cheaper second check that the 
 Kernels print as Metal source and run through [`define-kernel`](kernels.md) on the [Metal runtime](metal.md). There are no CUDA or OpenCL printers.
 
 - No `loop`, `do`, `tagbody` or `go` ([kernel forms](kernel-forms.md)).
-- Vectors lack swizzles and scalar broadcast ([#10](https://github.com/communal-software/cl-gpu/issues/10)).
 - No local arrays or static shared memory ([#11](https://github.com/communal-software/cl-gpu/issues/11)).
-- CUDA needs operators for vector types ([#12](https://github.com/communal-software/cl-gpu/issues/12)).
+- Swizzles are read-only ([#22](https://github.com/communal-software/cl-gpu/issues/22)).
+- Vectors cannot be compared, and `min`, `max`, `clamp`, `pow` and `fma` do not broadcast a scalar ([#23](https://github.com/communal-software/cl-gpu/issues/23)).
+- CUDA needs operators and broadcast for vector types ([#12](https://github.com/communal-software/cl-gpu/issues/12)).
 - GPU arrays hold scalars only ([#17](https://github.com/communal-software/cl-gpu/issues/17)).
 - Errors in `define-kernel` bodies have no source location ([#16](https://github.com/communal-software/cl-gpu/issues/16)).
 - Kernel pipelines of released devices stay cached ([#18](https://github.com/communal-software/cl-gpu/issues/18)).

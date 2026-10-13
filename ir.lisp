@@ -22,6 +22,11 @@
 (defstruct (ir-ternary (:include ir-expr)) test then else)
 (defstruct (ir-index (:include ir-expr)) base index)
 (defstruct (ir-component (:include ir-expr)) base index)
+
+;;; COMPONENTS are the indices read from BASE, a vector. A read only; never a place.
+(defstruct (ir-swizzle (:include ir-expr)) base components)
+
+;;; A construct with one argument broadcasts a scalar to every component.
 (defstruct (ir-construct (:include ir-expr)) args)
 
 ;;; KIND is :convert (value cast) or :bitcast (reinterpret bits).
@@ -56,6 +61,7 @@
       (ir-ternary (list (ir-ternary-test node) (ir-ternary-then node) (ir-ternary-else node)))
       (ir-index (list (ir-index-base node) (ir-index-index node)))
       (ir-component (list (ir-component-base node) (ir-component-index node)))
+      (ir-swizzle (list (ir-swizzle-base node)))
       (ir-construct (ir-construct-args node))
       (ir-convert (list (ir-convert-operand node)))
       (ir-intrinsic (ir-intrinsic-args node))

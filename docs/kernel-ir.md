@@ -46,7 +46,8 @@ Every expression has an `ir-expr-type`.
 | `ir-ternary` | `test ? a : b` |
 | `ir-index` | `p[i]` |
 | `ir-component` | `v.x` for index 0 |
-| `ir-construct` | vector constructor |
+| `ir-swizzle` | `v.zx`, a read of 1 to 4 components |
+| `ir-construct` | vector constructor. With one argument, a scalar broadcast |
 | `ir-convert` | cast, or bit reinterpretation |
 | `ir-intrinsic` | thread position, barrier, atomic or math call |
 
@@ -81,6 +82,6 @@ A loop has no value. Use `block` for a value.
 
 ## Limitations
 
-- Vectors have no swizzles or scalar broadcast ([#10](https://github.com/communal-software/cl-gpu/issues/10)).
+- Swizzles are read-only ([#22](https://github.com/communal-software/cl-gpu/issues/22)).
 - There are no local arrays or static shared memory ([#11](https://github.com/communal-software/cl-gpu/issues/11)).
-- The IR allows vector arithmetic that CUDA needs helpers for ([#12](https://github.com/communal-software/cl-gpu/issues/12)).
+- The IR allows vector arithmetic and one-argument broadcasts that CUDA needs helpers for ([#12](https://github.com/communal-software/cl-gpu/issues/12)).
