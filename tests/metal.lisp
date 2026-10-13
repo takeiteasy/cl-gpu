@@ -23,6 +23,13 @@
                        :arguments (read-from-string arguments))
      :metal)))
 
+(defun eval-kernel (text)
+  (let ((*package* (find-package '#:cl-gpu/metal/tests/kernel)))
+    (eval (read-from-string text))))
+
+(defun kernel-function (name)
+  (symbol-function (intern (string-upcase name) '#:cl-gpu/metal/tests/kernel)))
+
 (defmacro with-kernel ((pipeline text arguments) &body body)
   `(metal:with-library (library (metal:default-device) (kernel-source ,text ,arguments))
      (metal:with-pipeline (,pipeline library "k")
@@ -282,13 +289,6 @@ kernel void present() {}")
     (is (every #'identity results))))
 
 ;;; define-kernel and GPU arrays
-
-(defun eval-kernel (text)
-  (let ((*package* (find-package '#:cl-gpu/metal/tests/kernel)))
-    (eval (read-from-string text))))
-
-(defun kernel-function (name)
-  (symbol-function (intern (string-upcase name) '#:cl-gpu/metal/tests/kernel)))
 
 (test define-kernel-runs-saxpy
   (eval-kernel "(define-kernel saxpy ((out (ptr f32 :global)) (x (ptr f32 :global))
