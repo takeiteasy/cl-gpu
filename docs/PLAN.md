@@ -51,6 +51,7 @@ OpenCL goes first when the backends start, as the cheaper second check that the 
 
 Kernels print as Metal source and run through [`define-kernel`](kernels.md) on the [Metal runtime](metal.md). There are no CUDA or OpenCL printers.
 
+- SBCL only: the core and Metal runtime read `sb-ext` and `sb-kernel` symbols ([#28](https://github.com/communal-software/cl-gpu/issues/28), [#29](https://github.com/communal-software/cl-gpu/issues/29)). ECL and CCL follow ([#30](https://github.com/communal-software/cl-gpu/issues/30), [#31](https://github.com/communal-software/cl-gpu/issues/31)).
 - No `loop`, `do`, `tagbody` or `go` ([kernel forms](kernel-forms.md)).
 - Swizzles are read-only ([#22](https://github.com/communal-software/cl-gpu/issues/22)).
 - Vectors cannot be compared, and `min`, `max`, `clamp`, `pow` and `fma` do not broadcast a scalar ([#23](https://github.com/communal-software/cl-gpu/issues/23)).
