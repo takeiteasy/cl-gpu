@@ -44,7 +44,7 @@ so type errors are reported when the definition is compiled."
 (defun pointee-bytes (type)
   (if (atomic-type-p type)
       (pointee-bytes (atomic-type-element type))
-      (or (type-bytes type) (scalar-bytes type))))
+      (element-bytes type)))
 
 (defun scalar-value-p (type value)
   (if (eq (scalar-type-kind type) :float)

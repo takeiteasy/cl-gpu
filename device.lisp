@@ -12,10 +12,12 @@
   (:documentation "Release BUFFER. May run on a finalizer thread."))
 
 (defgeneric device-store (device buffer sequence element-type)
-  (:documentation "Store the numbers in SEQUENCE from the start of BUFFER as the scalar ELEMENT-TYPE."))
+  (:documentation "Store the numbers in SEQUENCE from the start of BUFFER as ELEMENT-TYPE, a scalar or vector type.
+The components of vector elements are consecutive in SEQUENCE. A 3-vector takes the space of a 4-vector."))
 
 (defgeneric device-load (device buffer sequence element-type)
-  (:documentation "Fill SEQUENCE with elements of the scalar ELEMENT-TYPE from the start of BUFFER."))
+  (:documentation "Fill SEQUENCE with the components of elements of ELEMENT-TYPE from the start of BUFFER.
+ELEMENT-TYPE and the layout are those of DEVICE-STORE."))
 
 (defgeneric device-prepare (device source entry-name)
   (:documentation "Compile SOURCE and return the runnable kernel ENTRY-NAME."))

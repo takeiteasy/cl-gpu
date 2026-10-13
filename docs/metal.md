@@ -26,7 +26,7 @@
 |---|---|
 | `(default-device)` | the system GPU; `device-name`, `device-max-threads` |
 | `(make-buffer device bytes)` | a zeroed buffer the host and GPU share[^1] |
-| `(copy-to-buffer buffer sequence &key element-type)` | stores numbers from the buffer's start; `element-type` is a scalar type, default `f32` |
+| `(copy-to-buffer buffer sequence &key element-type)` | stores numbers from the buffer's start; `element-type` is a scalar or vector type, default `f32` |
 | `(copy-from-buffer buffer sequence &key element-type)` | fills `sequence` from the buffer's start |
 | `(buffer-pointer buffer)`, `(buffer-size buffer)` | host address and size in bytes |
 | `(compile-library device source)` | a library; a compile error signals `metal-compile-error` with the compiler's log |
@@ -51,6 +51,8 @@
 | `(:threadgroup bytes)` | the next `[[threadgroup(k)]]`, for a `:shared` pointer |
 
 `type` is a scalar or `(vec T n)`; a vector value is a sequence of its components. A 3-vector takes the space of a 4-vector, as in Metal.
+
+`copy-to-buffer` and `copy-from-buffer` take the components of vector elements consecutively in `sequence`. A 3-vector takes the space of a 4-vector in the buffer, and the padding is left alone.
 
 ## Errors
 

@@ -85,11 +85,14 @@
         (gpu:scalar-type-name (gpu:vector-type-element type))
         (gpu:scalar-type-name type))))
 
-(defun scalar-name (spec)
+(defun element-layout (spec)
+  "The scalar name, component count and bytes per element of the array element type SPEC."
   (let ((type (gpu:parse-type spec)))
-    (unless (typep type 'gpu:scalar-type)
-      (fail "expected a scalar type, got ~s" spec))
-    (gpu:scalar-type-name type)))
+    (unless (typep type '(or gpu:scalar-type gpu:vector-type))
+      (fail "expected a scalar or vector type, got ~s" spec))
+    (let* ((name (element-name type))
+           (count (if (typep type 'gpu:vector-type) (gpu:vector-type-length type) 1)))
+      (values name count (* (element-bytes name) (if (= count 3) 4 count))))))
 
 (defun element-ctype (name)
   (ecase name
@@ -192,29 +195,46 @@
   "The host address of BUFFER's contents. Valid until BUFFER is released."
   (%buffer-contents (live-handle buffer)))
 
-(defun check-fits (buffer count name)
-  (when (> (* count (element-bytes name)) (buffer-size buffer))
-    (fail "~d ~(~a~) elements do not fit a ~d-byte buffer" count name (buffer-size buffer))))
+(defun check-fits (buffer elements stride)
+  (when (> (* elements stride) (buffer-size buffer))
+    (fail "~d elements of ~d bytes do not fit a ~d-byte buffer" elements stride (buffer-size buffer))))
+
+(defun transfer-elements (buffer sequence count stride)
+  "The number of elements SEQUENCE's components make, checked against BUFFER."
+  (unless (zerop (mod (length sequence) count))
+    (fail "~d components are not whole elements of ~d components" (length sequence) count))
+  (let ((elements (/ (length sequence) count)))
+    (check-fits buffer elements stride)
+    elements))
+
+(defun component-offset (index count stride width)
+  "Byte offset of component INDEX of a flat sequence of elements of COUNT components."
+  (multiple-value-bind (element component) (floor index count)
+    (+ (* element stride) (* component width))))
 
 (defun copy-to-buffer (buffer sequence &key (element-type 'gpu:f32))
-  "Store the numbers in SEQUENCE in BUFFER from its start as ELEMENT-TYPE."
-  (let ((name (scalar-name element-type))
-        (pointer (buffer-pointer buffer)))
-    (check-fits buffer (length sequence) name)
-    (let ((stride (element-bytes name)))
-      (map nil (let ((offset -1))
-                 (lambda (value) (write-element pointer name value (* stride (incf offset)))))
+  "Store the numbers in SEQUENCE in BUFFER from its start as ELEMENT-TYPE, a scalar or vector type.
+A vector's components are consecutive in SEQUENCE."
+  (multiple-value-bind (name count stride) (element-layout element-type)
+    (transfer-elements buffer sequence count stride)
+    (let ((pointer (buffer-pointer buffer))
+          (width (element-bytes name))
+          (index -1))
+      (map nil (lambda (value)
+                 (write-element pointer name value
+                                (component-offset (incf index) count stride width)))
            sequence))
     buffer))
 
 (defun copy-from-buffer (buffer sequence &key (element-type 'gpu:f32))
-  "Fill SEQUENCE with elements of ELEMENT-TYPE read from the start of BUFFER."
-  (let ((name (scalar-name element-type))
-        (pointer (buffer-pointer buffer)))
-    (check-fits buffer (length sequence) name)
-    (let ((stride (element-bytes name)))
+  "Fill SEQUENCE with the components of elements of ELEMENT-TYPE read from the start of BUFFER."
+  (multiple-value-bind (name count stride) (element-layout element-type)
+    (transfer-elements buffer sequence count stride)
+    (let ((pointer (buffer-pointer buffer))
+          (width (element-bytes name)))
       (dotimes (index (length sequence))
-        (setf (elt sequence index) (read-element pointer name (* stride index)))))
+        (setf (elt sequence index)
+              (read-element pointer name (component-offset index count stride width)))))
     sequence))
 
 ;;; Libraries and pipelines

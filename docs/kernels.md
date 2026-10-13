@@ -46,12 +46,20 @@ Parameter names are free: `grid`, `wait` and `pi` are valid.
 
 | Function | Result |
 |---|---|
-| `(make-gpu-array length &key element-type device initial-contents)` | a zeroed array; `element-type` is a scalar type, default `f32` |
-| `(to-device sequence &key element-type device)` | a new array holding the numbers |
-| `(from-device array [sequence])` | a new vector of the contents, or fills the first elements of `sequence` |
+| `(make-gpu-array length &key element-type device initial-contents)` | a zeroed array; `element-type` is a scalar or `(vec T n)` type, default `f32` |
+| `(to-device sequence &key element-type device)` | a new array holding the contents of `sequence` |
+| `(from-device array &key into flat)` | a new vector of the contents, or fills the first elements of `into` |
 | `(free array)` | releases the device memory; freeing twice is harmless |
 | `(with-gpu-array (var form) body)` | binds the array and frees it on exit |
 | `gpu-array-length`, `gpu-array-element-type`, `gpu-array-device` | readers |
+
+A vector array takes its contents as one sequence per element or as all the components in one flat sequence. `from-device` returns one vector per element, or with `:flat t` the components in one vector.[^3]
+
+```lisp
+(with-gpu-array (points (to-device '(#(1 2 3) #(4 5 6)) :element-type '(vec f32 3)))
+  (from-device points)                ; => #(#(1.0 2.0 3.0) #(4.0 5.0 6.0))
+  (from-device points :flat t))       ; => #(1.0 2.0 3.0 4.0 5.0 6.0)
+```
 
 An array not freed is released when it is garbage collected. Use `free` for large arrays: the collector does not see device memory pressure.
 
@@ -72,7 +80,6 @@ An array not freed is released when it is garbage collected. Use `free` for larg
 
 ## Limitations
 
-- Array elements are scalars; vectors are not ([#17](https://github.com/communal-software/cl-gpu/issues/17)).
 - A type error in a `define-kernel` body has no source location ([#16](https://github.com/communal-software/cl-gpu/issues/16)).
 - Pipelines of a released device stay cached ([#18](https://github.com/communal-software/cl-gpu/issues/18)).
 
@@ -82,3 +89,4 @@ A backend implements `device-target`, `device-allocate`, `device-free`, `device-
 
 [^1]: The cache is per kernel and per device. `device-prepare` receives the source and the entry function name and returns whatever `device-launch` runs.
 [^2]: `device-launch` receives its arguments as `(:buffer b)`, `(:bytes type value)` or `(:shared bytes)` in parameter order, the grid and group as lists of three, and returns the backend's command.
+[^3]: A 3-vector takes the space of a 4-vector in the buffer, as in Metal; the padding is never read or written. `:flat` has no effect on scalar arrays.

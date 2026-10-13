@@ -52,7 +52,7 @@
       (is (= 3 (gpu:gpu-array-length array)))
       (is (eq (type-of-spec "i32") (gpu:gpu-array-element-type array)))
       (is (equalp #(1 2 3) (gpu:from-device array)))
-      (is (equalp #(1 2) (gpu:from-device array (make-array 2 :initial-element 0))))
+      (is (equalp #(1 2) (gpu:from-device array :into (make-array 2 :initial-element 0))))
       (gpu:free array))))
 
 (test free-is-idempotent
@@ -74,7 +74,59 @@
   (with-mock-device (device)
     (signals gpu:gpu-error (gpu:make-gpu-array 2 :initial-contents #(1 2 3)))
     (is (= 1 (freed device)) "a failed fill frees the array")
-    (signals gpu:gpu-error (gpu:make-gpu-array 2 :element-type '(gpu:vec gpu:f32 2)))))
+    (dolist (type '((gpu:ptr gpu:f32 :global) (gpu:atomic gpu:u32)))
+      (signals gpu:gpu-error (gpu:make-gpu-array 2 :element-type type)))))
+
+(test vector-arrays-take-nested-or-flat-contents
+  (with-mock-device (device)
+    (loop for (type nested flat) in '(((gpu:vec gpu:f32 4) (#(1 2 3 4) (5 6 7 8)) #(1 2 3 4 5 6 7 8))
+                                      ((gpu:vec gpu:i32 3) (#(1 2 3) (4 5 6)) #(1 2 3 4 5 6)))
+          do (let ((from-nested (gpu:to-device nested :element-type type))
+                   (from-flat (gpu:to-device flat :element-type type)))
+               (is (= 2 (gpu:gpu-array-length from-nested)))
+               (is (= 2 (gpu:gpu-array-length from-flat)))
+               (is (eq (gpu:parse-type type) (gpu:gpu-array-element-type from-nested)))
+               (is (equalp (map 'vector (lambda (element) (coerce element 'vector)) nested)
+                           (gpu:from-device from-nested)))
+               (is (equalp flat (gpu:from-device from-flat :flat t)))))))
+
+(test vector-arrays-fill-given-sequences
+  (with-mock-device (device)
+    (let ((array (gpu:to-device #(#(1 2) #(3 4) #(5 6)) :element-type '(gpu:vec gpu:f32 2))))
+      (let ((into (make-array 2 :initial-element 0)))
+        (is (eq into (gpu:from-device array :into into)))
+        (is (equalp #(#(1 2) #(3 4)) into)))
+      (is (equalp #(1 2 3 4) (gpu:from-device array :into (make-array 4) :flat t)))
+      (signals gpu:gpu-error (gpu:from-device array :into (make-array 4)))
+      (signals gpu:gpu-error (gpu:from-device array :into (make-array 3) :flat t))
+      (signals gpu:gpu-error (gpu:from-device array :into (make-array 8) :flat t)))))
+
+(test scalar-arrays-ignore-flat
+  (with-mock-device (device)
+    (let ((array (gpu:to-device #(1 2 3))))
+      (is (equalp #(1.0 2.0 3.0) (gpu:from-device array :flat t))))))
+
+(test vector-arrays-reject-bad-contents
+  (with-mock-device (device)
+    (let ((type '(gpu:vec gpu:f32 3)))
+      (signals gpu:gpu-error (gpu:to-device '(#(1 2 3) #(4 5)) :element-type type))
+      (signals gpu:gpu-error (gpu:to-device #(1 2 3 4) :element-type type))
+      (signals gpu:gpu-error (gpu:make-gpu-array 1 :element-type type
+                                                   :initial-contents #(1 2 3 4 5 6)))
+      (signals gpu:gpu-error (gpu:make-gpu-array 1 :element-type type
+                                                   :initial-contents '(#(1 2 3) #(4 5 6)))))))
+
+(test vector-arrays-launch-on-matching-pointers
+  (with-mock-device (device)
+    (eval-kernel-text
+     "(define-kernel vector-copy ((out (ptr (vec f32 4) :global)))
+        (setf (aref out 0) (aref out 1)))")
+    (let ((function (kernel-function "vector-copy"))
+          (same (gpu:make-gpu-array 2 :element-type '(gpu:vec gpu:f32 4)))
+          (other (gpu:make-gpu-array 2 :element-type '(gpu:vec gpu:f32 2))))
+      (is (null (funcall function same :grid 1)))
+      (signals gpu:gpu-error (funcall function other :grid 1))
+      (is (= 1 (length (launches device)))))))
 
 (test no-backend-is-an-error
   (let ((gpu::*backends* '())

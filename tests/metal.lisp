@@ -368,3 +368,35 @@ kernel void present() {}")
   (gpu:with-gpu-array (out (gpu:make-gpu-array 32 :element-type 'gpu:u32))
     (funcall (kernel-function "local-sums") out :grid 32)
     (is (equalp (filled 32 (lambda (i) (* 6 i))) (gpu:from-device out)))))
+
+;;; Vector arrays
+
+(test three-vectors-take-four-component-slots
+  (metal:with-buffer (buffer (metal:default-device) 32)
+    (metal:copy-to-buffer buffer #(1 2 3 4 5 6) :element-type '(gpu:vec gpu:f32 3))
+    (is (equalp #(1.0 2.0 3.0 0.0 4.0 5.0 6.0 0.0) (read-back buffer 'gpu:f32 8)))
+    (is (equalp #(1.0 2.0 3.0 4.0 5.0 6.0)
+                (metal:copy-from-buffer buffer (make-array 6) :element-type '(gpu:vec gpu:f32 3))))
+    (signals metal:metal-error
+      (metal:copy-to-buffer buffer #(1 2 3 4) :element-type '(gpu:vec gpu:f32 3)))
+    (signals metal:metal-error
+      (metal:copy-to-buffer buffer (make-array 9) :element-type '(gpu:vec gpu:f32 3)))))
+
+(test vector-arrays-run-through-kernels
+  (eval-kernel "(define-kernel double-vec4 ((out (ptr (vec f32 4) :global))
+                                            (in (ptr (vec f32 4) :global)))
+                  (let ((i (global-id 0)))
+                    (setf (aref out i) (* (aref in i) 2.0))))")
+  (eval-kernel "(define-kernel double-vec3 ((out (ptr (vec i32 3) :global))
+                                            (in (ptr (vec i32 3) :global)))
+                  (let ((i (global-id 0)))
+                    (setf (aref out i) (* (aref in i) 2))))")
+  (flet ((check (kernel type input)
+           (gpu:with-gpu-array (in (gpu:to-device input :element-type type))
+             (gpu:with-gpu-array (out (gpu:make-gpu-array (gpu:gpu-array-length in) :element-type type))
+               (funcall (kernel-function kernel) out in :grid (gpu:gpu-array-length in))
+               (is (equalp (map 'vector (lambda (vector) (map 'vector (lambda (x) (* 2 x)) vector))
+                                input)
+                           (gpu:from-device out)))))))
+    (check "double-vec4" '(gpu:vec gpu:f32 4) '(#(1.0 2.0 3.0 4.0) #(5.0 6.0 7.0 8.0)))
+    (check "double-vec3" '(gpu:vec gpu:i32 3) '(#(1 2 3) #(4 5 6) #(7 8 9)))))
