@@ -54,6 +54,7 @@ The array is freed when garbage collected, or sooner by FREE."
 (defun flat-components (type sequence)
   "The components in SEQUENCE: numbers, or for a vector TYPE a sequence per element, which is
 flattened into a vector specialised to the component type."
+  ;; TODO: generic map and a coerce per value, ~20x slower than flat input (#62)
   (if (and (vector-type-p type)
            (plusp (length sequence))
            (typep (elt sequence 0) 'sequence))
