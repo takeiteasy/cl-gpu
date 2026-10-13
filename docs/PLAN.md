@@ -25,8 +25,26 @@ The cl-webgpu shader DSL (a 3bgl-shaders fork) informs the inference tests but c
 | 3 | C-like printer base and MSL printer | [#3](https://github.com/communal-software/cl-gpu/issues/3) | Done |
 | 4 | Metal runtime | [#4](https://github.com/communal-software/cl-gpu/issues/4) | Done |
 | 5 | `define-kernel` and buffer API | [#5](https://github.com/communal-software/cl-gpu/issues/5) | Done |
-| 6 | CUDA backend | [#6](https://github.com/communal-software/cl-gpu/issues/6) | Open |
-| 7 | OpenCL backend | [#7](https://github.com/communal-software/cl-gpu/issues/7) | Open |
+| 6 | CUDA backend | [#6](https://github.com/communal-software/cl-gpu/issues/6) | Deferred |
+| 7 | OpenCL backend | [#7](https://github.com/communal-software/cl-gpu/issues/7) | Deferred |
+
+## Order
+
+The kernel DSL and the Metal runtime stabilise first: the open `dsl`, `arch` and `api` tickets (#8–#18) come before CUDA and OpenCL, which are low priority.
+
+| Backend | Testing without a GPU of that vendor |
+|---|---|
+| OpenCL | Apple's OpenCL 1.2 runs on the Mac, and [PoCL](https://portablecl.org) (`brew install pocl`, `pocl-opencl-icd` on Linux) is a CPU implementation of OpenCL 3.0. Apple's lacks `f64` on Apple silicon and OpenCL 2.0 atomics. |
+| CUDA | Printer snapshot tests need nothing. `nvcc -ptx` or NVRTC checks that generated source compiles on a Linux machine with the toolkit, without a GPU. Running kernels needs a rented GPU, on `workflow_dispatch` only. |
+
+OpenCL goes first when the backends start, as the cheaper second check that the backend protocol in `src/device.lisp` is not shaped around Metal.
+
+## Later
+
+| Idea | Ticket |
+|---|---|
+| GPU BLAS, parallel to trivial-simd/blas: DSL kernels with vendor fast paths | [#19](https://github.com/communal-software/cl-gpu/issues/19) |
+| MLX for cl-inference, independent of cl-gpu | [cl-inference#43](https://github.com/communal-software/cl-inference/issues/43) |
 
 ## Limitations
 
