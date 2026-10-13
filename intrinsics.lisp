@@ -130,6 +130,17 @@
 (define-float-math pow "pow" "pow" "powf" "pow" 2)
 (define-float-math fma "fma" "fma" "fmaf" "fma" 3)
 
+;;; Internal: lowering picks these for float `rem` and for signed and float `mod`.
+(define-intrinsic %fmod (:number 2)
+  :metal (:call "fmod")
+  :cuda (:call "fmod" :f32 "fmodf")
+  :opencl (:call "fmod"))
+
+(define-intrinsic %floor-mod (:number 2)
+  :metal (:helper "cl_gpu_mod" :f16 "cl_gpu_fmod" :bf16 "cl_gpu_fmod" :f32 "cl_gpu_fmod")
+  :cuda (:helper "cl_gpu_mod" :f16 "cl_gpu_fmod" :bf16 "cl_gpu_fmod" :f32 "cl_gpu_fmod" :f64 "cl_gpu_fmod")
+  :opencl (:helper "cl_gpu_mod" :f16 "cl_gpu_fmod" :f32 "cl_gpu_fmod" :f64 "cl_gpu_fmod"))
+
 (define-intrinsic abs (:number 1)
   :metal (:call "abs")
   :cuda (:call "abs" :f32 "fabsf" :f64 "fabs")

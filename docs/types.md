@@ -61,6 +61,37 @@ Literals adopt the type they meet:
 
 A constant expression such as `(* 2 3)` adopts a type as one literal does. The reader decides whether `1.5` is a `single-float` or a `double-float`[^1].
 
+## Pointer arithmetic
+
+| Form | Result |
+|---|---|
+| `(ptr+ p n)` | `p` offset by `n` elements, same pointer type |
+| `(ptr- p q)` | `i64` element distance; `p` and `q` have one pointer type |
+| `(incf q [n])`, `(decf q [n])` | moves the pointer place `q` |
+
+`n` is an integer scalar. `+` and `-` stay numeric-only.
+
+```lisp
+(let ((q (ptr+ out (global-id 0))))
+  (setf (aref q 0) 1.0)
+  (atomic-add (ptr+ counts 2) 1))   ; works on atomic pointers too
+```
+
+## Remainders
+
+| Form | Result has the sign of | Float |
+|---|---|---|
+| `(rem a b)` | `a` (truncated) | `fmod` |
+| `(mod a b)` | `b` (floored) | floored `fmod` |
+
+`rem` and `mod` take two operands of one numeric type, or two vectors of one type. They agree on unsigned integers.[^2] `bf16` is not available on Metal.
+
+```lisp
+(rem -7 3)    ; => -1
+(mod -7 3)    ; =>  2
+(mod 7.5 -2.0) ; => -0.5
+```
+
 ## Conditions
 
 Tests of `if`, `for`, `while`, `and`, `or` and `not` must be `bool`: write `(> n 0)`, not `n`.
@@ -78,3 +109,4 @@ Tests of `if`, `for`, `while`, `and`, `or` and `not` must be `bool`: write `(> n
 `ir-kernel-scalar-types` lists the scalar types a lowered kernel uses, so a printer can reject it early.
 
 [^1]: `*read-default-float-format*` applies when the kernel text is read, so `1.5` is `f64` under `double-float`. Write `1.5f0` or `1.5d0` to be explicit.
+[^2]: A signed or float `mod` calls the helper `cl_gpu_mod` or `cl_gpu_fmod`, which the source defines when the kernel uses it. It adds the divisor only when the remainder is non-zero and the signs differ, so it cannot overflow. As with `/`, a zero divisor and `MIN % -1` are undefined.

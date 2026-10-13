@@ -152,6 +152,28 @@
      "(setf (aref out 0) (+ (aref out 1) -2147483648))
       (setf (aref big 0) (- (aref big 1) 9223372036854775807))"
      "((out (ptr i32 :global)) (big (ptr i64 :global)))")
+    ("pointers"
+     "(let ((q p))
+        (incf q 2)
+        (decf q)
+        (setf (aref (ptr+ q (incf i)) 0) 1.0)
+        (setf p (ptr+ p 1))
+        (atomic-add (ptr+ c i) 1)
+        (setf (aref d 0) (ptr- q p)))"
+     "((p (ptr f32 :global)) (c (ptr (atomic u32) :global)) (d (ptr i64 :global)) (i u32))")
+    ("remainders"
+     "(progn
+        (setf (aref o 0) (mod (aref o 1) (aref o 2)))
+        (setf (aref o 3) (rem (aref o 1) -3))
+        (setf (aref f 0) (mod (aref f 1) 3.0))
+        (setf (aref f 2) (rem (aref f 1) 3.0))
+        (setf (aref h 0) (mod (aref h 1) (aref h 2)))
+        (setf (aref h 3) (rem (aref h 1) (aref h 2)))
+        (setf (aref v 0) (mod (aref v 1) (aref v 2)))
+        (setf (aref w 0) (mod (aref w 1) (aref w 2)))
+        (setf (aref w 3) (rem (aref w 1) (aref w 2))))"
+     "((o (ptr i32 :global)) (f (ptr f32 :global)) (h (ptr f16 :global))
+       (v (ptr (vec i32 4) :global)) (w (ptr (vec f32 4) :global)))")
     ("math"
      "(setf (aref out 0) (clamp (pow (exp x) (rsqrt (log (floor x)))) 0.0 1.0))"
      "((x f32) (out (ptr f32 :global)))")))
@@ -162,3 +184,25 @@
             do (let ((errors (compile-metal (kernel-text text :arguments arguments :name name))))
                  (is (null errors) "~a did not compile:~%~a" name errors)))
       (skip "the Metal compiler is not available")))
+
+(test bfloat-remainders-are-a-target-error
+  (signals gpu:kernel-target-error
+    (kernel-text "(setf (aref h 0) (rem (aref h 1) (aref h 2)))" :arguments "((h (ptr bf16 :global)))"))
+  (signals gpu:kernel-target-error
+    (kernel-text "(setf (aref h 0) (mod (aref h 1) (aref h 2)))" :arguments "((h (ptr bf16 :global)))")))
+
+(test floored-mod-defines-its-helper-only-when-used
+  (let ((signed (kernel-text "(setf (aref o 0) (mod (aref o 1) 3))" :arguments "((o (ptr i32 :global)))"))
+        (floats (kernel-text "(setf (aref o 0) (mod (aref o 1) 3.0))" :arguments "((o (ptr f32 :global)))"))
+        (plain (kernel-text "(setf (aref o 0) (rem (aref o 1) 3))" :arguments "((o (ptr i32 :global)))")))
+    (is (contains-p signed "cl_gpu_mod(o[1], 3)"))
+    (is (contains-p signed "T r = a % b;"))
+    (is (contains-p floats "cl_gpu_fmod(o[1], 3.0f)"))
+    (is (not (contains-p plain "cl_gpu_")))
+    (is (contains-p plain "o[1] % 3"))))
+
+(test pointer-arithmetic-prints-c-pointer-arithmetic
+  (let ((text (kernel-text "(progn (setf (aref (ptr+ p 1) 0) 1.0) (setf (aref d 0) (ptr- p (ptr+ p 2))))"
+                           :arguments "((p (ptr f32 :global)) (d (ptr i64 :global)))")))
+    (is (contains-p text "(p + 1)[0] = 1.0f;"))
+    (is (contains-p text "d[0] = p - (p + 2);"))))

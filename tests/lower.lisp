@@ -137,8 +137,73 @@
   (signals gpu:kernel-type-error (lower-text "(let ((r (- a))) r)" :arguments "((a u32))"))
   (signals gpu:kernel-type-error (lower-text "(let ((r (logand a b))) r)" :arguments "((a f32) (b f32))"))
   (is (typep (lower-text "(let ((r (shl (logxor a 1) 2))) r)" :arguments "((a u32))") 'gpu:ir-kernel))
-  (signals gpu:kernel-type-error (lower-text "(let ((r (mod a 2))) r)" :arguments "((a i32))"))
   (is (typep (lower-text "(let ((r (mod a 2))) r)" :arguments "((a u32))") 'gpu:ir-kernel)))
+
+(defun declared-init (text arguments)
+  (gpu:ir-declare-init (first (ir-nodes-of-type 'gpu:ir-declare (lower-text text :arguments arguments)))))
+
+(defun intrinsic-name-of (expr)
+  (and (typep expr 'gpu:ir-intrinsic)
+       (symbol-name (gpu::intrinsic-name (gpu:ir-intrinsic-intrinsic expr)))))
+
+(test remainders-pick-their-lowering-by-type
+  (flet ((lowering (text type)
+           (let ((init (declared-init text (format nil "((a ~a))" type))))
+             (if (typep init 'gpu:ir-op) (gpu:ir-op-operator init) (intrinsic-name-of init)))))
+    (is (eq :rem (lowering "(let ((r (rem a 2))) r)" "i32")))
+    (is (eq :rem (lowering "(let ((r (mod a 2))) r)" "u32")))
+    (is (equal "%FLOOR-MOD" (lowering "(let ((r (mod a 2))) r)" "i32")))
+    (is (equal "%FLOOR-MOD" (lowering "(let ((r (mod a a))) r)" "(vec i32 4)")))
+    (is (equal "%FLOOR-MOD" (lowering "(let ((r (mod a 2.0))) r)" "f32")))
+    (is (equal "%FMOD" (lowering "(let ((r (rem a 2.0))) r)" "f32")))
+    (is (equal "%FMOD" (lowering "(let ((r (rem a a))) r)" "(vec f32 2)"))))
+  (signals gpu:kernel-type-error (lower-text "(let ((r (mod a a))) r)" :arguments "((a bool))"))
+  (signals gpu:kernel-type-error (lower-text "(let ((r (rem a a a))) r)" :arguments "((a i32))")))
+
+;;; Pointer arithmetic
+
+(test ptr-plus-keeps-the-pointer-type
+  (let ((init (declared-init "(let ((q (ptr+ p 2))) q)" "((p (ptr f32 :global)))")))
+    (is (eq :add (gpu:ir-op-operator init)))
+    (is (eq (type-of-spec "(ptr f32 :global)") (gpu:ir-expr-type init)))))
+
+(test ptr-plus-takes-atomic-pointers
+  (is (typep (lower-text "(atomic-add (ptr+ c i) 1)"
+                         :arguments "((c (ptr (atomic u32) :global)) (i u32))")
+             'gpu:ir-kernel)))
+
+(test ptr-minus-is-an-i64
+  (let ((init (declared-init "(let ((d (ptr- p q))) d)"
+                             "((p (ptr f32 :global)) (q (ptr f32 :global)))")))
+    (is (eq :sub (gpu:ir-op-operator init)))
+    (is (eq (type-of-spec "i64") (gpu:ir-expr-type init)))))
+
+(test pointer-arithmetic-checks-its-operands
+  (flet ((fails (text)
+           (signals gpu:kernel-type-error
+             (lower-text text :arguments "((p (ptr f32 :global)) (q (ptr i32 :global))
+                                          (s (ptr f32 :shared)) (x f32) (v (vec i32 2)))"))))
+    (fails "(ptr+ x 1)")
+    (fails "(ptr+ p 1.0)")
+    (fails "(ptr+ p x)")
+    (fails "(ptr+ p v)")
+    (fails "(ptr+ p)")
+    (fails "(ptr- p q)")
+    (fails "(ptr- p s)")
+    (fails "(ptr- p 1)")))
+
+(test incf-and-decf-move-pointers
+  (let ((kernel (lower-text "(let ((q p)) (incf q) (decf q (global-id 0)) (setf (aref q 0) 1.0))"
+                            :arguments "((p (ptr f32 :global)))")))
+    (is (equal '(:add :sub)
+               (mapcar #'gpu:ir-op-operator
+                       (mapcar #'gpu:ir-assign-value
+                               (remove-if-not (lambda (assign) (typep (gpu:ir-assign-value assign) 'gpu:ir-op))
+                                              (ir-nodes-of-type 'gpu:ir-assign kernel)))))))
+  (signals gpu:kernel-type-error
+    (lower-text "(let ((q p)) (incf q 1.0))" :arguments "((p (ptr f32 :global)))"))
+  (signals gpu:kernel-type-error
+    (lower-text "(incf b)" :arguments "((b bool))")))
 
 (test comparisons-give-bool
   (let* ((kernel (lower-text "(let ((r (< a b))) r)" :arguments "((a f32) (b f32))"))

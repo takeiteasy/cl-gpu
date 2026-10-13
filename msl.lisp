@@ -66,10 +66,27 @@
 "
                        type space atomic type type type)))))
 
+;;; Floored remainder: the truncated one, moved by B when its sign differs from B's. The
+;;; add only happens then, so it cannot overflow. select makes it work on vectors too.
+(defparameter *floor-mod-helper* "template <typename T>
+inline T cl_gpu_mod(T a, T b) {
+    T r = a % b;
+    return select(r, r + b, (r != T(0)) & ((r < T(0)) != (b < T(0))));
+}
+")
+
+(defparameter *floor-mod-float-helper* "template <typename T>
+inline T cl_gpu_fmod(T a, T b) {
+    T r = fmod(a, b);
+    return select(r, r + b, (r != T(0)) & ((r < T(0)) != (b < T(0))));
+}
+")
+
 (defmethod helper-definition ((printer msl-printer) name)
-  (if (string= name "cl_gpu_atomic_cas")
-      (atomic-cas-helpers)
-      (error "unknown helper ~a" name)))
+  (cond ((string= name "cl_gpu_atomic_cas") (atomic-cas-helpers))
+        ((string= name "cl_gpu_mod") *floor-mod-helper*)
+        ((string= name "cl_gpu_fmod") *floor-mod-float-helper*)
+        (t (error "unknown helper ~a" name))))
 
 (defmethod print-prelude ((printer msl-printer) stream)
   (format stream "#include <metal_stdlib>~%using namespace metal;~%~%")
@@ -92,7 +109,19 @@
     (remove-if (lambda (parameter) (pointer-type-p (ir-variable-type parameter)))
                (intersection found (ir-kernel-parameters kernel)))))
 
+;;; Metal's fmod returns float for a bfloat.
+(defun check-bfloat-remainders (kernel)
+  (dolist (statement (ir-kernel-body kernel))
+    (map-ir (lambda (node)
+              (when (and (ir-intrinsic-p node)
+                         (member (intrinsic-name (ir-intrinsic-intrinsic node)) '(%fmod %floor-mod))
+                         (eq (scalar 'bf16)
+                             (first (type-scalars (ir-expr-type node)))))
+                (target-fail "rem and mod are not available on bf16 on metal")))
+            statement)))
+
 (defmethod begin-kernel :after ((printer msl-printer) kernel)
+  (check-bfloat-remainders kernel)
   (setf (printer-positions printer) '()
         (printer-copies printer) (assigned-parameters kernel)))
 

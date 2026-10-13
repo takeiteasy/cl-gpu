@@ -334,20 +334,35 @@ needed, and the type. Non-constant nodes decide the type; constants adopt it."
       (mapc #'emit statements)
       (emit-store place value want-value))))
 
+(defun integer-scalar-p (type)
+  (and (scalar-type-p type) (integer-type-p type)))
+
+(defun check-offset (node offset)
+  "OFFSET, the expression of NODE, which must be an integer scalar."
+  (unless (integer-scalar-p (ir-expr-type offset))
+    (type-fail node "a pointer offset must be an integer scalar, got ~a"
+               (type-description (ir-expr-type offset))))
+  offset)
+
 (defun lower-modify (node want-value)
   (let* ((place (stabilise-place (lower-place (modify-target node))))
          (type (ir-expr-type place))
-         (operator (modify-operator node)))
-    (unless (numeric-scalar-p type)
-      (type-fail node "~(~a~) needs a numeric place, got ~a"
-                 (if (eq operator '+) 'incf 'decf) (type-description type)))
-    (let ((delta (lower-value (modify-delta node) type)))
-      (unless (eq (ir-expr-type delta) type)
-        (type-fail (modify-delta node) "expected ~a, got ~a"
-                   (type-description type) (type-description (ir-expr-type delta))))
-      (emit-store place
-                  (make-op (if (eq operator '+) :add :sub) (list place delta) type)
-                  want-value))))
+         (operator (modify-operator node))
+         (name (if (eq operator '+) 'incf 'decf))
+         (ir-operator (if (eq operator '+) :add :sub)))
+    (cond
+      ((pointer-type-p type)
+       (let ((offset (check-offset (modify-delta node) (lower-value (modify-delta node) nil))))
+         (emit-store place (make-op ir-operator (list place offset) type) want-value)))
+      (t
+       (unless (numeric-scalar-p type)
+         (type-fail node "~(~a~) needs a numeric or pointer place, got ~a"
+                    name (type-description type)))
+       (let ((delta (lower-value (modify-delta node) type)))
+         (unless (eq (ir-expr-type delta) type)
+           (type-fail (modify-delta node) "expected ~a, got ~a"
+                      (type-description type) (type-description (ir-expr-type delta))))
+         (emit-store place (make-op ir-operator (list place delta) type) want-value))))))
 
 ;;; if
 
@@ -597,13 +612,20 @@ needed, and the type. Non-constant nodes decide the type; constants adopt it."
   (check-arity node args 2 nil)
   (lower-arith node :div args hint #'numeric-type-p "numeric"))
 
-(define-operator rem (node args hint)
+(defun lower-remainder (node args hint floored)
+  "REM, or MOD when FLOORED. Floats and floored signed integers go through an intrinsic."
   (check-arity node args 2 2)
-  (lower-arith node :rem args hint #'integer-type-p "integer"))
+  (multiple-value-bind (exprs statements type) (lower-agreeing args hint)
+    (check-operands node type #'numeric-type-p "numeric")
+    (let ((operands (assemble-operands exprs statements))
+          (intrinsic (cond ((and floored (not (unsigned-type-p type))) '%floor-mod)
+                           ((float-type-p type) '%fmod))))
+      (if intrinsic
+          (make-ir-intrinsic :intrinsic (find-intrinsic intrinsic) :args operands :type type)
+          (make-op :rem operands type)))))
 
-(define-operator mod (node args hint)
-  (check-arity node args 2 2)
-  (lower-arith node :rem args hint #'unsigned-type-p "unsigned integer (use rem for signed)"))
+(define-operator rem (node args hint) (lower-remainder node args hint nil))
+(define-operator mod (node args hint) (lower-remainder node args hint t))
 
 (define-operator logand (node args hint)
   (check-arity node args 1 nil)
@@ -685,6 +707,30 @@ needed, and the type. Non-constant nodes decide the type; constants adopt it."
 
 (define-operator and (node args hint) (lower-short-circuit :and args))
 (define-operator or (node args hint) (lower-short-circuit :or args))
+
+;;; Pointer arithmetic
+
+(defun pointer-argument (node expr)
+  (unless (pointer-type-p (ir-expr-type expr))
+    (type-fail node "expected a pointer, got ~a" (type-description (ir-expr-type expr))))
+  expr)
+
+(define-operator ptr+ (node args hint)
+  (check-arity node args 2 2)
+  (destructuring-bind (base offset) (lower-sequence args)
+    (pointer-argument (first args) base)
+    (check-offset (second args) offset)
+    (make-op :add (list base offset) (ir-expr-type base))))
+
+(define-operator ptr- (node args hint)
+  (check-arity node args 2 2)
+  (destructuring-bind (a b) (lower-sequence args)
+    (pointer-argument (first args) a)
+    (pointer-argument (second args) b)
+    (unless (eq (ir-expr-type a) (ir-expr-type b))
+      (type-fail node "ptr- needs pointers of one type, got ~a and ~a"
+                 (type-description (ir-expr-type a)) (type-description (ir-expr-type b))))
+    (make-op :sub (list a b) (scalar 'i64))))
 
 ;;; aref, vec, convert, bitcast
 

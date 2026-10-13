@@ -50,6 +50,10 @@ An atomic in value position runs where it is written and its result is bound to 
 
 `floor` and `ceiling` return a float of the operand's type.
 
+## Remainders and pointer offsets
+
+`rem`, `mod`, `ptr+` and `ptr-` are operators, described under [types](types.md#remainders). Float `rem` and signed or float `mod` lower to intrinsics.
+
 ## Conversions
 
 | Form | Meaning |

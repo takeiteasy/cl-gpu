@@ -26,7 +26,7 @@
    #:f16 #:bf16 #:f32 #:f64
    #:i8 #:i16 #:i32 #:i64
    #:u8 #:u16 #:u32 #:u64
-   #:bool #:vec #:ptr #:atomic
+   #:bool #:vec #:ptr #:atomic #:ptr+ #:ptr-
    #:parse-type #:type-spec #:type-description #:type-support
    #:gpu-type
    #:scalar-type #:scalar-type-name #:scalar-type-kind #:scalar-type-bits

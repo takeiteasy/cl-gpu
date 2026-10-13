@@ -42,7 +42,7 @@ Every expression has an `ir-expr-type`.
 | Node | C |
 |---|---|
 | `ir-literal`, `ir-var` | constant, variable |
-| `ir-op` | operator, named by `operator` (`:add`, `:lt`, `:and`, `:bit-xor`, `:shl`, ...) |
+| `ir-op` | operator, named by `operator` (`:add`, `:lt`, `:and`, `:bit-xor`, `:shl`, ...). `:add` and `:sub` also offset and subtract pointers |
 | `ir-ternary` | `test ? a : b` |
 | `ir-index` | `p[i]` |
 | `ir-component` | `v.x` for index 0 |
@@ -82,7 +82,5 @@ A loop has no value. Use `block` for a value.
 ## Limitations
 
 - Vectors have no swizzles or scalar broadcast ([#10](https://github.com/communal-software/cl-gpu/issues/10)).
-- Pointers are kernel parameters only; local arrays and static shared memory are missing ([#11](https://github.com/communal-software/cl-gpu/issues/11)).
-- There is no pointer arithmetic ([#13](https://github.com/communal-software/cl-gpu/issues/13)).
-- `mod` takes unsigned integers and `rem` takes integers ([#14](https://github.com/communal-software/cl-gpu/issues/14)).
+- There are no local arrays or static shared memory ([#11](https://github.com/communal-software/cl-gpu/issues/11)).
 - The IR allows vector arithmetic that CUDA needs helpers for ([#12](https://github.com/communal-software/cl-gpu/issues/12)).

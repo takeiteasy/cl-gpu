@@ -55,9 +55,7 @@ Kernels print as Metal source and run through [`define-kernel`](kernels.md) on t
 - Vectors lack swizzles and scalar broadcast ([#10](https://github.com/communal-software/cl-gpu/issues/10)).
 - No local arrays or static shared memory ([#11](https://github.com/communal-software/cl-gpu/issues/11)).
 - CUDA needs operators for vector types ([#12](https://github.com/communal-software/cl-gpu/issues/12)).
-- No pointer arithmetic ([#13](https://github.com/communal-software/cl-gpu/issues/13)).
 - GPU arrays hold scalars only ([#17](https://github.com/communal-software/cl-gpu/issues/17)).
 - Errors in `define-kernel` bodies have no source location ([#16](https://github.com/communal-software/cl-gpu/issues/16)).
 - Kernel pipelines of released devices stay cached ([#18](https://github.com/communal-software/cl-gpu/issues/18)).
 - Buffers use shared storage only ([#15](https://github.com/communal-software/cl-gpu/issues/15)).
-- `mod` is unsigned only and `rem` is integer only ([#14](https://github.com/communal-software/cl-gpu/issues/14)).
