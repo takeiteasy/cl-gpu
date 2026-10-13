@@ -44,7 +44,7 @@ OpenCL goes first when the backends start, as the cheaper second check that the 
 | Idea | Ticket |
 |---|---|
 | GPU BLAS Level 1 ([done](blas.md)), parallel to trivial-simd/blas | [#19](https://github.com/communal-software/cl-gpu/issues/19) |
-| GPU `gemv` and `gemm`, with an MPS fast path | [#37](https://github.com/communal-software/cl-gpu/issues/37) |
+| GPU `gemv` and `gemm`, with an MPS fast path ([done](blas-matrices.md)) | [#37](https://github.com/communal-software/cl-gpu/issues/37) |
 | Batched `gemm`; complex routines; f16/bf16/f64; rotations | [#38](https://github.com/communal-software/cl-gpu/issues/38), [#39](https://github.com/communal-software/cl-gpu/issues/39), [#40](https://github.com/communal-software/cl-gpu/issues/40), [#41](https://github.com/communal-software/cl-gpu/issues/41) |
 | MLX for cl-inference, independent of cl-gpu | [cl-inference#43](https://github.com/communal-software/cl-inference/issues/43) |
 | Body-only kernel output, so MLX can run DSL kernels as custom kernels | [#20](https://github.com/communal-software/cl-gpu/issues/20), [cl-inference#44](https://github.com/communal-software/cl-inference/issues/44) |

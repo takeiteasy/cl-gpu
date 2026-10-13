@@ -1,6 +1,6 @@
 # BLAS
 
-`cl-gpu/blas` runs the f32 BLAS Level 1 routines on [GPU arrays](kernels.md#arrays). Names, arguments and results follow [trivial-simd/blas](https://github.com/communal-software/trivial-simd/blob/trunk/docs/blas.md).
+`cl-gpu/blas` runs the f32 BLAS Level 1 routines on [GPU arrays](kernels.md#arrays). Matrix products are on the [matrices](blas-matrices.md) page. Names, arguments and results follow [trivial-simd/blas](https://github.com/communal-software/trivial-simd/blob/trunk/docs/blas.md).
 
 ```lisp
 (asdf:load-system "cl-gpu/blas")
@@ -44,7 +44,7 @@ A span is `n` elements from the offset, `|inc|` apart. A negative increment visi
 ## Limitations
 
 - f32 only ([#40](https://github.com/communal-software/cl-gpu/issues/40)). No rotations ([#41](https://github.com/communal-software/cl-gpu/issues/41)) or complex routines ([#39](https://github.com/communal-software/cl-gpu/issues/39)).
-- No `gemv` or `gemm` ([#37](https://github.com/communal-software/cl-gpu/issues/37)), or batched `gemm` ([#38](https://github.com/communal-software/cl-gpu/issues/38)).
+- No batched `gemm` ([#38](https://github.com/communal-software/cl-gpu/issues/38)). `gemv` and `gemm` are on the [matrices](blas-matrices.md) page.
 - Every launch waits ([#42](https://github.com/communal-software/cl-gpu/issues/42)).
 - Reductions allocate a partials array per call ([#43](https://github.com/communal-software/cl-gpu/issues/43)).
 - `isamax` of data holding NaN is not defined.

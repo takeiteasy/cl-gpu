@@ -42,7 +42,8 @@
   (or (handle object) (fail "~(~a~) was released" (type-of object))))
 
 (defclass metal-device (metal-object)
-  ((queue :initarg :queue :reader device-queue)))
+  ((queue :initarg :queue :reader device-queue)
+   (mps-support :initform :unknown :accessor device-mps-support)))
 
 (defclass metal-buffer (metal-object) ())
 (defclass metal-library (metal-object)

@@ -40,3 +40,12 @@
   (lengths :pointer) (grid :pointer) (group :pointer) (error :pointer))
 (defshim ("clgpu_command_done_p" %command-done-p) :int (command :pointer))
 (defshim ("clgpu_command_wait" %command-wait) :int (command :pointer) (error :pointer))
+
+(defshim ("clgpu_mps_supported" %mps-supported) :int (device :pointer))
+(defshim ("clgpu_mps_gemm" %mps-gemm) :int
+  (queue :pointer) (transpose-left :int) (transpose-right :int)
+  (m :unsigned-long) (n :unsigned-long) (k :unsigned-long) (alpha :float) (beta :float)
+  (buffers :pointer) (shapes :pointer) (error :pointer))
+(defshim ("clgpu_mps_gemv" %mps-gemv) :int
+  (queue :pointer) (transpose :int) (rows :unsigned-long) (columns :unsigned-long)
+  (alpha :float) (beta :float) (buffers :pointer) (shapes :pointer) (error :pointer))

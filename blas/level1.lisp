@@ -149,16 +149,11 @@
 
 ;;; Routines
 
-(defun real-alpha (name alpha)
-  (unless (realp alpha)
-    (gpu-fail "~(~a~): ALPHA must be a real number, got ~s" name alpha))
-  (float alpha 1f0))
-
 (defun saxpy (n alpha x incx y incy &key (x-offset 0) (y-offset 0))
   "Set Y to ALPHA*X+Y over N elements. Return Y."
   (let* ((xs (check-span 'saxpy n x incx x-offset))
          (ys (check-span 'saxpy n y incy y-offset))
-         (alpha (real-alpha 'saxpy alpha))
+         (alpha (real-scalar 'saxpy "ALPHA" alpha))
          (device (same-device 'saxpy xs ys)))
     (check-disjoint 'saxpy ys xs)
     (unless (or (zerop n) (zerop alpha))
@@ -168,7 +163,7 @@
 (defun sscal (n alpha x incx &key (x-offset 0))
   "Set X to ALPHA*X over N elements. Return X."
   (let* ((xs (check-span 'sscal n x incx x-offset))
-         (alpha (real-alpha 'sscal alpha)))
+         (alpha (real-scalar 'sscal "ALPHA" alpha)))
     (unless (zerop n)
       (%sscal x alpha n (span-start xs) incx :grid n :device (gpu-array-device x)))
     x))

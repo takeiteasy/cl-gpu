@@ -2,6 +2,7 @@
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#import <MetalPerformanceShaders/MetalPerformanceShaders.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -148,5 +149,133 @@ int clgpu_command_wait(void *command, char **error) {
             return 1;
         }
         return 0;
+    }
+}
+
+// MetalPerformanceShaders. A matrix is described by four values: byte offset, rows, columns and
+// row bytes. Both calls return 0 on success. MPS rejects some bad arguments with an assertion that
+// aborts the process, so the caller passes only shapes it has checked.
+
+int clgpu_mps_supported(void *device) {
+    return MPSSupportsMTLDevice((id<MTLDevice>)device) ? 1 : 0;
+}
+
+static MPSMatrix *new_matrix(void *buffer, const unsigned long *shape) {
+    MPSMatrixDescriptor *descriptor = [MPSMatrixDescriptor matrixDescriptorWithRows:shape[1]
+                                                                            columns:shape[2]
+                                                                           rowBytes:shape[3]
+                                                                           dataType:MPSDataTypeFloat32];
+    return [[MPSMatrix alloc] initWithBuffer:(id<MTLBuffer>)buffer offset:shape[0] descriptor:descriptor];
+}
+
+static MPSVector *new_vector(void *buffer, unsigned long offset, unsigned long length) {
+    MPSVectorDescriptor *descriptor = [MPSVectorDescriptor vectorDescriptorWithLength:length
+                                                                             dataType:MPSDataTypeFloat32];
+    return [[MPSVector alloc] initWithBuffer:(id<MTLBuffer>)buffer offset:offset descriptor:descriptor];
+}
+
+static int finish(id<MTLCommandBuffer> command, char **error) {
+    [command commit];
+    [command waitUntilCompleted];
+    if ([command status] == MTLCommandBufferStatusError) {
+        NSError *failure = [command error];
+        set_error(error, failure ? [failure localizedDescription] : @"command failed");
+        return 1;
+    }
+    return 0;
+}
+
+// MPS reads the result even when BETA is 0, so a NaN there would survive. Clear it first.
+static void clear_bytes(id<MTLCommandBuffer> command, void *buffer, unsigned long offset,
+                        unsigned long rows, unsigned long row_length, unsigned long row_bytes) {
+    id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
+    if (row_length == row_bytes) {
+        [blit fillBuffer:(id<MTLBuffer>)buffer range:NSMakeRange(offset, rows * row_length) value:0];
+    } else {
+        for (unsigned long row = 0; row < rows; row++)
+            [blit fillBuffer:(id<MTLBuffer>)buffer
+                       range:NSMakeRange(offset + row * row_bytes, row_length)
+                       value:0];
+    }
+    [blit endEncoding];
+}
+
+// RESULT = ALPHA * op(LEFT) * op(RIGHT) + BETA * RESULT, with RESULT of M by N and K columns inside.
+// BUFFERS and SHAPES hold the left, right and result matrices in that order.
+int clgpu_mps_gemm(void *queue, int transpose_left, int transpose_right,
+                   unsigned long m, unsigned long n, unsigned long k, float alpha, float beta,
+                   void *const *buffers, const unsigned long *shapes, char **error) {
+    @autoreleasepool {
+        MPSMatrix *matrices[3] = {nil, nil, nil};
+        MPSMatrixMultiplication *multiplication = nil;
+        int status = 1;
+        @try {
+            id<MTLCommandQueue> commandQueue = (id<MTLCommandQueue>)queue;
+            for (int i = 0; i < 3; i++)
+                matrices[i] = new_matrix(buffers[i], shapes + 4 * i);
+            multiplication = [[MPSMatrixMultiplication alloc] initWithDevice:[commandQueue device]
+                                                               transposeLeft:transpose_left
+                                                              transposeRight:transpose_right
+                                                                  resultRows:m
+                                                               resultColumns:n
+                                                             interiorColumns:k
+                                                                       alpha:alpha
+                                                                        beta:beta];
+            id<MTLCommandBuffer> command = [commandQueue commandBuffer];
+            if (beta == 0)
+                clear_bytes(command, buffers[2], shapes[8], shapes[9], shapes[10] * 4, shapes[11]);
+            [multiplication encodeToCommandBuffer:command
+                                       leftMatrix:matrices[0]
+                                      rightMatrix:matrices[1]
+                                     resultMatrix:matrices[2]];
+            status = finish(command, error);
+        } @catch (NSException *exception) {
+            set_error(error, [exception reason]);
+        }
+        for (int i = 0; i < 3; i++)
+            [matrices[i] release];
+        [multiplication release];
+        return status;
+    }
+}
+
+// RESULT = ALPHA * op(MATRIX) * INPUT + BETA * RESULT, where op(MATRIX) is ROWS by COLUMNS.
+// BUFFERS holds the matrix, input and result vector; SHAPES the matrix's four values, then the
+// byte offset and length of the input and of the result.
+int clgpu_mps_gemv(void *queue, int transpose, unsigned long rows, unsigned long columns,
+                   float alpha, float beta, void *const *buffers, const unsigned long *shapes,
+                   char **error) {
+    @autoreleasepool {
+        MPSMatrix *matrix = nil;
+        MPSVector *input = nil, *result = nil;
+        MPSMatrixVectorMultiplication *multiplication = nil;
+        int status = 1;
+        @try {
+            id<MTLCommandQueue> commandQueue = (id<MTLCommandQueue>)queue;
+            matrix = new_matrix(buffers[0], shapes);
+            input = new_vector(buffers[1], shapes[4], shapes[5]);
+            result = new_vector(buffers[2], shapes[6], shapes[7]);
+            multiplication = [[MPSMatrixVectorMultiplication alloc] initWithDevice:[commandQueue device]
+                                                                         transpose:transpose
+                                                                              rows:rows
+                                                                           columns:columns
+                                                                             alpha:alpha
+                                                                              beta:beta];
+            id<MTLCommandBuffer> command = [commandQueue commandBuffer];
+            if (beta == 0)
+                clear_bytes(command, buffers[2], shapes[6], 1, shapes[7] * 4, shapes[7] * 4);
+            [multiplication encodeToCommandBuffer:command
+                                      inputMatrix:matrix
+                                      inputVector:input
+                                     resultVector:result];
+            status = finish(command, error);
+        } @catch (NSException *exception) {
+            set_error(error, [exception reason]);
+        }
+        [matrix release];
+        [input release];
+        [result release];
+        [multiplication release];
+        return status;
     }
 }

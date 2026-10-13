@@ -85,7 +85,7 @@ An array not freed is released when it is garbage collected. Use `free` for larg
 
 ## Backends
 
-A backend implements `device-target`, `device-allocate`, `device-free`, `device-store`, `device-load`, `device-prepare` and `device-launch` for its device class and calls `register-backend`.[^2] It may also implement `device-shared-memory-limit`, the bytes of shared memory a kernel may use; `nil`, the default, skips the check.
+A backend implements `device-target`, `device-allocate`, `device-free`, `device-store`, `device-load`, `device-prepare` and `device-launch` for its device class and calls `register-backend`.[^2] It may also implement `device-shared-memory-limit`, the bytes of shared memory a kernel may use; `nil`, the default, skips the check. `cl-gpu/blas` adds the generics `device-gemm` and `device-gemv`, whose default methods run DSL kernels; a backend may specialize them to call a vendor library and use `call-next-method` for layouts it cannot handle.
 
 [^1]: The cache is per kernel and per device. `device-prepare` receives the source and the entry function name and returns whatever `device-launch` runs.
 [^2]: `device-launch` receives its arguments as `(:buffer b)`, `(:bytes type value)` or `(:shared bytes)` in parameter order, the grid and group as lists of three, and returns the backend's command.

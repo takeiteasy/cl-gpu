@@ -18,7 +18,8 @@
   (let ((output (first (asdf:output-files operation component))))
     (ensure-directories-exist output)
     (uiop:run-program (list "xcrun" "clang" "-dynamiclib" "-x" "objective-c" "-fno-objc-arc"
-                            "-framework" "Metal" "-framework" "Foundation"
+                            "-framework" "Metal" "-framework" "MetalPerformanceShaders"
+                            "-framework" "Foundation"
                             (uiop:native-namestring (asdf:component-pathname component))
                             "-o" (uiop:native-namestring output))
                       :output :interactive :error-output :interactive)))
@@ -83,7 +84,8 @@
                              (:objc-dylib "shim")
                              (:file "ffi")
                              (:file "runtime")
-                             (:file "backend"))))
+                             (:file "backend")
+                             (:file "mps"))))
   :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/metal/tests"))))
 
 (asdf:defsystem "cl-gpu/metal/tests"
@@ -95,19 +97,22 @@
                (error "cl-gpu/metal tests failed"))))
 
 (asdf:defsystem "cl-gpu/blas"
-  :description "BLAS Level 1 on the GPU for cl-gpu"
+  :description "BLAS on the GPU for cl-gpu"
   :license "GPL-3.0-only"
   :depends-on ("cl-gpu")
   :serial t
   :components ((:module "blas"
                 :serial t
                 :components ((:file "package")
+                             (:file "matrix-view")
                              (:file "validate")
-                             (:file "level1"))))
+                             (:file "level1")
+                             (:file "level2")
+                             (:file "level3"))))
   :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/blas/tests"))))
 
 (asdf:defsystem "cl-gpu/blas/tests"
-  :depends-on ("cl-gpu/blas" "cl-gpu/metal" "trivial-simd/blas" "fiveam")
+  :depends-on ("cl-gpu/blas" "cl-gpu/metal" "trivial-simd/blas" "float-features" "fiveam")
   :components ((:file "tests/blas"))
   :perform (asdf:test-op (op component)
              (declare (ignore op component))

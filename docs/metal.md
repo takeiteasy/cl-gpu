@@ -54,6 +54,10 @@
 
 `copy-to-buffer` and `copy-from-buffer` take the components of vector elements consecutively in `sequence`. A 3-vector takes the space of a 4-vector in the buffer, and the padding is left alone.
 
+## MetalPerformanceShaders
+
+The shim links MetalPerformanceShaders. With `cl-gpu/blas` loaded, `device-gemm` and `device-gemv` on a Metal device call it where the layouts allow, and bind `*use-mps*` to `nil` to use the DSL kernels instead. See [BLAS matrices](blas-matrices.md#metal-and-mps).
+
 ## Errors
 
 `metal-error` is signalled for a missing device, a released object, a transfer that overflows the buffer, an unknown kernel name or a failed command. `metal-compile-error` is its subclass for source that does not compile. Both carry `metal-error-message`.

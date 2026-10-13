@@ -10,7 +10,7 @@
    ;; Backends
    #:*device* #:current-device #:register-backend
    #:device-target #:device-shared-memory-limit #:device-allocate #:device-free #:device-store #:device-load
-   #:device-prepare #:device-launch
+   #:device-prepare #:device-launch #:device-gemm #:device-gemv
    ;; Reader
    #:read-kernel
    #:read-kernel-from-string

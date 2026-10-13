@@ -8,4 +8,5 @@
    #:make-buffer #:buffer-size #:buffer-pointer #:copy-to-buffer #:copy-from-buffer
    #:compile-library #:make-pipeline #:pipeline-max-threads #:pipeline-execution-width
    #:dispatch #:wait #:command-done-p
+   #:*use-mps*
    #:release #:with-buffer #:with-library #:with-pipeline))
