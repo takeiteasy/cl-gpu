@@ -108,10 +108,10 @@
   (cffi:foreign-type-size (element-ctype name)))
 
 (defun single-bits (value)
-  (ldb (byte 32 0) (sb-kernel:single-float-bits (coerce value 'single-float))))
+  (ldb (byte 32 0) (float-features:single-float-bits (coerce value 'single-float))))
 
 (defun bits-single (bits)
-  (sb-kernel:make-single-float (if (logbitp 31 bits) (- bits (ash 1 32)) bits)))
+  (float-features:bits-single-float bits))
 
 (defun shift-round (integer shift)
   "INTEGER shifted right by SHIFT bits, rounding to nearest even."
@@ -150,8 +150,8 @@
     (cond ((= exponent 31)
            (if (zerop mantissa)
                (if (plusp sign)
-                   sb-ext:single-float-positive-infinity
-                   sb-ext:single-float-negative-infinity)
+                   float-features:single-float-positive-infinity
+                   float-features:single-float-negative-infinity)
                (fail "half-precision NaN has no Lisp value")))
           ((zerop exponent) (* sign (scale-float (coerce mantissa 'single-float) -24)))
           (t (* sign (scale-float (coerce (+ 1024 mantissa) 'single-float) (- exponent 25)))))))

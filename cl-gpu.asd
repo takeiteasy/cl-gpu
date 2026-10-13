@@ -33,7 +33,7 @@
   :license "GPL-3.0-only"
   :version "0.0.0"
   :depends-on ("eclector" "eclector-concrete-syntax-tree" "concrete-syntax-tree"
-               "trivial-garbage")
+               "trivial-garbage" "float-features" "bordeaux-threads")
   :serial t
   :components ((:file "package")
                (:file "conditions")

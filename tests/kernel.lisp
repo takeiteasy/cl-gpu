@@ -356,17 +356,17 @@ Return the kernel-error signalled, or NIL if none."
 
 (test compile-file-reports-the-kernel-location
   (let ((source (merge-pathnames "cl-gpu-located-test.lisp" (uiop:temporary-directory)))
-        (fasl (merge-pathnames "cl-gpu-located-test.fasl" (uiop:temporary-directory))))
+        (fasl (compile-file-pathname (merge-pathnames "cl-gpu-located-test.lisp" (uiop:temporary-directory)))))
     (unwind-protect
          (progn
            (with-open-file (out source :direction :output :if-exists :supersede)
              (write-string *located-file-text* out))
+           ;; Some implementations report the error and others let it escape compile-file.
            (let ((report (with-output-to-string (*error-output*)
                            (let ((*standard-output* *error-output*))
-                             (multiple-value-bind (output warnings failure)
-                                 (compile-file source :output-file fasl)
-                               (declare (ignore output warnings))
-                               (is (eq t failure)))))))
+                             (handler-case (compile-file source :output-file fasl)
+                               (gpu:kernel-error (condition)
+                                 (princ condition *error-output*)))))))
              (is (search (format nil "~a:4:22" (namestring (truename source))) report))))
       (ignore-errors (delete-file source))
       (ignore-errors (delete-file fasl)))))
@@ -383,8 +383,7 @@ Return the kernel-error signalled, or NIL if none."
   (setf (aref out 0) (twice-for-file 2.0)))"
                            out))
            (multiple-value-bind (fasl warnings failure)
-               (compile-file source :output-file (merge-pathnames "cl-gpu-kernel-macro-test.fasl"
-                                                                  (uiop:temporary-directory)))
+               (compile-file source :output-file (compile-file-pathname source))
              (declare (ignore warnings))
              (is (not failure))
              (is (and fasl (load fasl)))

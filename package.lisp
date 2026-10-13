@@ -1,6 +1,6 @@
 (defpackage #:cl-gpu
   (:use #:cl)
-  (:local-nicknames (#:tg #:trivial-garbage))
+  (:local-nicknames (#:tg #:trivial-garbage) (#:bt #:bordeaux-threads))
   (:export
    ;; Kernels and arrays
    #:define-kernel #:find-kernel #:kernel-ir

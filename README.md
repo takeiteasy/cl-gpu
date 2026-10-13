@@ -20,6 +20,8 @@ On macOS, the Metal runtime has its own tests:
 sbcl --noinform --non-interactive --eval '(asdf:test-system "cl-gpu/metal")'
 ```
 
+Both pass on SBCL, ECL and CCL.
+
 ## License
 
 ```

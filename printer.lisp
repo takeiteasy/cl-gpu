@@ -277,10 +277,11 @@
 
 (defun float-spelling (value type)
   "VALUE spelled with a decimal point or exponent, so that it reads back as the same float."
-  (when (or (sb-ext:float-infinity-p value) (sb-ext:float-nan-p value))
+  (when (or (float-features:float-infinity-p value) (float-features:float-nan-p value))
     (target-fail "~a literal ~a has no spelling" (type-description type) value))
   (let ((*read-default-float-format* (if (typep value 'double-float) 'double-float 'single-float)))
-    (prin1-to-string value)))
+    ;; Implementations differ in the exponent: 1.0e10, 1.0E+10.
+    (remove #\+ (string-downcase (prin1-to-string value)))))
 
 (defun float-literal-text (printer type value)
   (let ((digits (float-spelling value type)))

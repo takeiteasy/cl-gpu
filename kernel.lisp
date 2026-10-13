@@ -5,7 +5,8 @@
   ir
   shared-bytes
   ;; TODO: entries of released devices stay (#18)
-  (pipelines (make-hash-table :test 'eq :synchronized t)))
+  (pipelines (make-hash-table :test 'eq))
+  (lock (bt:make-lock "gpu-kernel pipelines")))
 
 (defun static-shared-bytes (ir)
   "Bytes of the shared arrays of IR, not counting alignment."
@@ -133,11 +134,12 @@ so type errors are reported when the definition is compiled."
 ;;; Launching
 
 (defun prepared-kernel (kernel device)
-  (or (gethash device (gpu-kernel-pipelines kernel))
-      (let* ((ir (gpu-kernel-ir kernel))
-             (target (device-target device)))
-        (setf (gethash device (gpu-kernel-pipelines kernel))
-              (device-prepare device (kernel-source ir target) (kernel-entry-name ir target))))))
+  (bt:with-lock-held ((gpu-kernel-lock kernel))
+    (or (gethash device (gpu-kernel-pipelines kernel))
+        (let* ((ir (gpu-kernel-ir kernel))
+               (target (device-target device)))
+          (setf (gethash device (gpu-kernel-pipelines kernel))
+                (device-prepare device (kernel-source ir target) (kernel-entry-name ir target)))))))
 
 (defun check-shared-memory (kernel arguments device)
   (let ((limit (device-shared-memory-limit device))
