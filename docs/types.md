@@ -69,7 +69,7 @@ A constant expression such as `(* 2 3)` adopts a type as one literal does. The r
 | `(ptr- p q)` | `i64` element distance; `p` and `q` have one pointer type |
 | `(incf q [n])`, `(decf q [n])` | moves the pointer place `q` |
 
-`n` is an integer scalar. `+` and `-` stay numeric-only.
+`n` is an integer scalar. `+` and `-` stay numeric-only. `=` `/=` `<` `<=` `>` `>=` compare two pointers of one type.
 
 ```lisp
 (let ((q (ptr+ out (global-id 0))))

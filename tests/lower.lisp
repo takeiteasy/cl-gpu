@@ -437,3 +437,20 @@
     (let ((loop-node (first (ir-nodes-of-type 'gpu:ir-while kernel))))
       (is (eq t (gpu:ir-literal-value (gpu:ir-while-test loop-node))))
       (is (typep (second (gpu:ir-while-body loop-node)) 'gpu:ir-if)))))
+
+(test pointers-compare
+  (let ((init (declared-init "(let ((r (< p q))) r)"
+                             "((p (ptr f32 :global)) (q (ptr f32 :global)))")))
+    (is (eq :lt (gpu:ir-op-operator init)))
+    (is (eq (type-of-spec "bool") (gpu:ir-expr-type init))))
+  (is (typep (lower-text "(when (<= p (ptr+ p 1) q) (setf (aref p 0) 1.0))"
+                         :arguments "((p (ptr f32 :global)) (q (ptr f32 :global)))")
+             'gpu:ir-kernel))
+  (flet ((fails (text)
+           (signals gpu:kernel-type-error
+             (lower-text text :arguments "((p (ptr f32 :global)) (q (ptr i32 :global))
+                                          (s (ptr f32 :shared)) (x f32))"))))
+    (fails "(= p q)")
+    (fails "(= p s)")
+    (fails "(< p x)")
+    (fails "(< p 0)")))

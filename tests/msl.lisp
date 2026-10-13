@@ -159,6 +159,7 @@
         (setf (aref (ptr+ q (incf i)) 0) 1.0)
         (setf p (ptr+ p 1))
         (atomic-add (ptr+ c i) 1)
+        (when (and (< q p) (= p p)) (setf (aref q 0) 2.0))
         (setf (aref d 0) (ptr- q p)))"
      "((p (ptr f32 :global)) (c (ptr (atomic u32) :global)) (d (ptr i64 :global)) (i u32))")
     ("remainders"
@@ -200,6 +201,11 @@
     (is (contains-p floats "cl_gpu_fmod(o[1], 3.0f)"))
     (is (not (contains-p plain "cl_gpu_")))
     (is (contains-p plain "o[1] % 3"))))
+
+(test pointer-comparisons-print-as-c
+  (let ((text (kernel-text "(when (and (/= p q) (< p (ptr+ q 1))) (setf (aref p 0) 1.0))"
+                           :arguments "((p (ptr f32 :global)) (q (ptr f32 :global)))")))
+    (is (contains-p text "p != q && p < q + 1"))))
 
 (test pointer-arithmetic-prints-c-pointer-arithmetic
   (let ((text (kernel-text "(progn (setf (aref (ptr+ p 1) 0) 1.0) (setf (aref d 0) (ptr- p (ptr+ p 2))))"
