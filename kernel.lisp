@@ -1,9 +1,10 @@
 (in-package #:cl-gpu)
 
-(defstruct (gpu-kernel (:constructor %make-gpu-kernel (name ir shared-bytes)))
+(defstruct (gpu-kernel (:constructor %make-gpu-kernel (name ir shared-bytes precise-math)))
   name
   ir
   shared-bytes
+  precise-math
   ;; TODO: entries of released devices stay (#18)
   (pipelines (make-hash-table :test 'eq))
   (lock (bt:make-lock "gpu-kernel pipelines")))
@@ -14,9 +15,9 @@
         sum (* (ir-array-size array)
                (pointee-bytes (pointer-type-pointee (ir-variable-type (ir-array-variable array)))))))
 
-(defun make-gpu-kernel (name arguments form)
+(defun make-gpu-kernel (name arguments form &key precise-math)
   (let ((ir (lower-kernel form :name name :arguments arguments)))
-    (%make-gpu-kernel name ir (static-shared-bytes ir))))
+    (%make-gpu-kernel name ir (static-shared-bytes ir) precise-math)))
 
 (defun find-kernel (name)
   "The kernel that `define-kernel` bound to NAME, or NIL."
@@ -32,6 +33,8 @@
          (arguments (cst:third cst))
          (body (cst:nthrest 3 cst)))
     (when (and (stringp (cst:raw (cst:first body))) (cst:rest body))
+      (setf body (cst:rest body)))
+    (when (and (cst:consp (cst:first body)) (eq (cst:raw (cst:first (cst:first body))) 'declare))
       (setf body (cst:rest body)))
     (lower-kernel (cst:cons (cst:cst-from-expression 'progn) body :source (cst:source cst))
                   :name name :arguments arguments)))
@@ -52,23 +55,42 @@
     (kernel-error (original)
       (error (or (located-kernel-error whole original) original)))))
 
+(defun split-kernel-declaration (name body)
+  "Split a leading (declare (precise-math)) off BODY. Return whether it was there, and the rest."
+  (let ((declaration (first body)))
+    (if (and (consp declaration) (eq (first declaration) 'declare))
+        (progn
+          (dolist (specifier (rest declaration))
+            (unless (and (consp specifier) (null (rest specifier))
+                         (string= (symbol-name (first specifier)) "PRECISE-MATH"))
+              (error 'kernel-syntax-error
+                     :message (format nil "~(~a~): the only kernel declaration is (precise-math), got ~s"
+                                      name specifier)
+                     :form declaration)))
+          (values t (rest body)))
+        (values nil body))))
+
 (defmacro define-kernel (&whole whole name arguments &body body)
   "Define the function NAME, which runs BODY on the GPU.
 ARGUMENTS is a list of (parameter type). The function takes one argument per parameter, then
 the keywords :grid (required), :group, :wait and :device. The launch is queued: it returns NIL at
 once, or with :wait true after the device finishes all its launches (see SYNCHRONIZE). BODY is
-lowered now, so type errors are reported when the definition is compiled."
-  (let ((documentation (when (and (stringp (first body)) (rest body))
-                         (pop body)))
-        (form `(progn ,@body))
-        (parameters (loop for nil in arguments collect (gensym "ARG")))
-        (grid (gensym "GRID"))
-        (group (gensym "GROUP"))
-        (wait (gensym "WAIT"))
-        (device (gensym "DEVICE")))
+lowered now, so type errors are reported when the definition is compiled.
+A leading (declare (precise-math)) compiles the kernel without fast math."
+  (let* ((documentation (when (and (stringp (first body)) (rest body))
+                          (pop body)))
+         (precise-math (multiple-value-bind (precise rest) (split-kernel-declaration name body)
+                         (setf body rest)
+                         precise))
+         (form `(progn ,@body))
+         (parameters (loop for nil in arguments collect (gensym "ARG")))
+         (grid (gensym "GRID"))
+         (group (gensym "GROUP"))
+         (wait (gensym "WAIT"))
+         (device (gensym "DEVICE")))
     (check-kernel whole name arguments form)
     `(progn
-       (setf (get ',name 'gpu-kernel) (make-gpu-kernel ',name ',arguments ',form))
+       (setf (get ',name 'gpu-kernel) (make-gpu-kernel ',name ',arguments ',form :precise-math ,precise-math))
        (defun ,name (,@parameters &key ((:grid ,grid)) ((:group ,group)) ((:wait ,wait) nil)
                                     ((:device ,device)))
          ,@(when documentation (list documentation))
@@ -140,7 +162,8 @@ lowered now, so type errors are reported when the definition is compiled."
         (let* ((ir (gpu-kernel-ir kernel))
                (target (device-target device)))
           (setf (gethash device (gpu-kernel-pipelines kernel))
-                (device-prepare device (kernel-source ir target) (kernel-entry-name ir target)))))))
+                (device-prepare device (kernel-source ir target) (kernel-entry-name ir target)
+                                :precise-math (gpu-kernel-precise-math kernel)))))))
 
 (defun check-shared-memory (kernel arguments device)
   (let ((limit (device-shared-memory-limit device))

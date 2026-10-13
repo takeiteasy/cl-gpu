@@ -373,11 +373,12 @@ A vector's components are consecutive in SEQUENCE."
 
 ;;; Libraries and pipelines
 
-(defun compile-library (device source)
-  "Compile Metal SOURCE. Signals METAL-COMPILE-ERROR with the compiler's log on failure."
+(defun compile-library (device source &key precise-math)
+  "Compile Metal SOURCE, without fast math when PRECISE-MATH. Signals METAL-COMPILE-ERROR with the
+compiler's log on failure."
   (multiple-value-bind (handle message)
       (with-error-slot (slot)
-        (%library-new (live-handle device) source slot))
+        (%library-new (live-handle device) source (if precise-math 1 0) slot))
     (when (cffi:null-pointer-p handle)
       (error 'metal-compile-error :message (or message "library compilation failed")))
     (make-instance 'metal-library :handle handle :device device)))

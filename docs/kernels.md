@@ -40,6 +40,19 @@ Parameter names are free: `grid`, `wait` and `pi` are valid.
 | scalar | a number of that type; `bool` takes any value |
 | `(vec T n)` | a sequence of `n` numbers |
 
+## Precise math
+
+A leading `(declare (precise-math))` compiles that kernel without fast math, so the compiler keeps the order and rounding of float operations. Use it for compensated sums such as two-sum. It goes before any other form (after the docstring) and is the only kernel declaration.
+
+```lisp
+(define-kernel two-sum ((in (ptr f32 :global)) (out (ptr f32 :global)))
+  (declare (precise-math))
+  (let* ((a (aref in 0)) (b (aref in 1)) (s (+ a b)) (bb (- s a)))
+    (setf (aref out 0) (+ (- a (- s bb)) (- b bb)))))   ; the rounding error of a+b
+```
+
+Metal compiles libraries with fast math on by default; other kernels keep it.
+
 `find-kernel` returns the kernel bound to a name and `kernel-ir` its lowered IR.
 
 ## Arrays

@@ -28,7 +28,7 @@
 (defshim ("clgpu_buffer_contents" %buffer-contents) :pointer (buffer :pointer))
 
 (defshim ("clgpu_library_new" %library-new) :pointer
-  (device :pointer) (source :string) (error :pointer))
+  (device :pointer) (source :string) (precise :int) (error :pointer))
 (defshim ("clgpu_pipeline_new" %pipeline-new) :pointer
   (device :pointer) (library :pointer) (name :string) (error :pointer))
 (defshim ("clgpu_pipeline_max_threads" %pipeline-max-threads) :unsigned-long

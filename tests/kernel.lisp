@@ -19,8 +19,8 @@
   (replace buffer sequence))
 (defmethod gpu:device-load ((device mock-device) buffer sequence element-type)
   (replace sequence buffer))
-(defmethod gpu:device-prepare ((device mock-device) source entry-name)
-  (push (list source entry-name) (prepared device))
+(defmethod gpu:device-prepare ((device mock-device) source entry-name &key precise-math)
+  (push (list source entry-name precise-math) (prepared device))
   entry-name)
 (defmethod gpu:device-launch ((device mock-device) prepared arguments grid group)
   (push (list prepared arguments grid group) (launches device))
@@ -164,6 +164,30 @@
       (is (= 1 (length (prepared device))))
       (is (= 3 (length (launches device))))
       (is (search "kernel void copy_b" (first (first (prepared device))))))))
+
+(test precise-math-reaches-the-device
+  (with-mock-device (device)
+    (eval-kernel-text "(define-kernel plain-math ((out (ptr f32 :global))) (setf (aref out 0) 1.0))")
+    (eval-kernel-text "(define-kernel exact-math ((out (ptr f32 :global)))
+                         (declare (precise-math))
+                         (setf (aref out 0) 1.0))")
+    (let ((out (gpu:make-gpu-array 1)))
+      (funcall (kernel-function "plain-math") out :grid 1)
+      (funcall (kernel-function "exact-math") out :grid 1)
+      (is (equal '(nil t) (mapcar #'third (reverse (prepared device))))))))
+
+(test only-a-leading-precise-math-declaration-is-allowed
+  (let ((*package* (find-package '#:cl-gpu/tests/kernel)))
+    (signals gpu:kernel-syntax-error
+      (macroexpand-1 (read-from-string
+                      "(define-kernel bad-a ((out (ptr f32 :global)))
+                         (declare (fast-math))
+                         (setf (aref out 0) 1.0))")))
+    (signals gpu:kernel-syntax-error
+      (macroexpand-1 (read-from-string
+                      "(define-kernel bad-b ((out (ptr f32 :global)))
+                         (setf (aref out 0) 1.0)
+                         (declare (precise-math)))")))))
 
 (test launch-keywords-reach-the-device
   (with-mock-device (device)

@@ -18,8 +18,8 @@
 (defmethod gpu:device-load ((device metal-device) buffer sequence element-type)
   (copy-from-buffer buffer sequence :element-type element-type))
 
-(defmethod gpu:device-prepare ((device metal-device) source entry-name)
-  (let ((library (compile-library device source)))
+(defmethod gpu:device-prepare ((device metal-device) source entry-name &key precise-math)
+  (let ((library (compile-library device source :precise-math precise-math)))
     (unwind-protect (make-pipeline library entry-name)
       (release library))))
 

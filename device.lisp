@@ -26,8 +26,9 @@ Launches that are still running finish first."))
   (:documentation "Fill SEQUENCE with the components of elements of ELEMENT-TYPE from the start of BUFFER.
 ELEMENT-TYPE and the layout are those of DEVICE-STORE. Launches that are still running finish first."))
 
-(defgeneric device-prepare (device source entry-name)
-  (:documentation "Compile SOURCE and return the runnable kernel ENTRY-NAME."))
+(defgeneric device-prepare (device source entry-name &key precise-math)
+  (:documentation "Compile SOURCE and return the runnable kernel ENTRY-NAME. With PRECISE-MATH,
+compile without fast math."))
 
 (defgeneric device-launch (device prepared arguments grid group)
   (:documentation "Enqueue PREPARED over GRID, a list of three thread counts, in groups of GROUP or NIL.

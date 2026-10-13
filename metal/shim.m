@@ -62,12 +62,23 @@ void *clgpu_buffer_new(void *device, unsigned long length, int private_storage) 
 
 void *clgpu_buffer_contents(void *buffer) { return [(id<MTLBuffer>)buffer contents]; }
 
-void *clgpu_library_new(void *device, const char *source, char **error) {
+void *clgpu_library_new(void *device, const char *source, int precise, char **error) {
     @autoreleasepool {
         NSError *failure = nil;
         NSString *text = [NSString stringWithUTF8String:source];
+        MTLCompileOptions *options = [[[MTLCompileOptions alloc] init] autorelease];
+        if (precise) {
+            if (@available(macOS 15.0, *))
+                options.mathMode = MTLMathModeSafe;
+            else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                options.fastMathEnabled = NO;
+#pragma clang diagnostic pop
+            }
+        }
         id<MTLLibrary> library = [(id<MTLDevice>)device newLibraryWithSource:text
-                                                                     options:nil
+                                                                     options:options
                                                                        error:&failure];
         if (!library)
             set_error(error, failure ? [failure localizedDescription] : @"library compilation failed");
