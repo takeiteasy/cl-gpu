@@ -45,6 +45,7 @@ OpenCL goes first when the backends start, as the cheaper second check that the 
 |---|---|
 | GPU BLAS, parallel to trivial-simd/blas: DSL kernels with vendor fast paths | [#19](https://github.com/communal-software/cl-gpu/issues/19) |
 | MLX for cl-inference, independent of cl-gpu | [cl-inference#43](https://github.com/communal-software/cl-inference/issues/43) |
+| Body-only kernel output, so MLX can run DSL kernels as custom kernels | [#20](https://github.com/communal-software/cl-gpu/issues/20), [cl-inference#44](https://github.com/communal-software/cl-inference/issues/44) |
 
 ## Limitations
 
