@@ -33,6 +33,8 @@ kernel void saxpy(
 }
 ```
 
+For hosts that generate signatures, use [embeddable kernel parts](kernel-parts.md).
+
 ## API
 
 | Function | Result |

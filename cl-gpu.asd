@@ -52,7 +52,7 @@
                (:file "msl")
                (:file "device")
                (:file "array")
-               (:file "kernel"))
+               (:file "kernel") (:file "parts"))
   :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/tests"))))
 
 (asdf:defsystem "cl-gpu/tests"
@@ -67,7 +67,7 @@
                (:file "tests/lower")
                (:file "tests/printer")
                (:file "tests/msl")
-               (:file "tests/kernel"))
+               (:file "tests/kernel") (:file "tests/parts"))
   :perform (asdf:test-op (op component)
              (declare (ignore op component))
              (unless (uiop:symbol-call :cl-gpu/tests :run-tests)

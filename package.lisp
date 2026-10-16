@@ -3,7 +3,7 @@
   (:local-nicknames (#:tg #:trivial-garbage) (#:bt #:bordeaux-threads))
   (:export
    ;; Kernels and arrays
-   #:define-kernel #:find-kernel #:kernel-ir
+   #:define-kernel #:find-kernel #:kernel-ir #:gpu-kernel #:gpu-kernel-p
    #:gpu-array #:make-gpu-array #:gpu-array-view #:make-gpu-array-view #:gpu-array-view-p
    #:gpu-array-view-owner #:gpu-array-view-offset #:to-device #:copy-into #:from-device #:free #:with-gpu-array
    #:gpu-array-length #:gpu-array-element-type #:gpu-array-device
@@ -70,6 +70,10 @@
    #:ir-while #:ir-while-test #:ir-while-body
    #:ir-break #:ir-return
    #:ir-expr-stmt #:ir-expr-stmt-expr
+   #:kernel-parts #:kernel-parts-header #:kernel-parts-body #:kernel-parts-parameters
+   #:kernel-parts-inputs #:kernel-parts-outputs #:kernel-parts-attributes #:kernel-parts-precise-math
+   #:kernel-parameter #:kernel-parameter-variable #:kernel-parameter-name #:kernel-parameter-mode
+   #:embedded-msl-printer
    ;; Printing
    #:kernel-source #:print-kernel #:c-printer #:msl-printer
    ;; Conditions

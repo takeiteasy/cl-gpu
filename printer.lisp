@@ -328,7 +328,9 @@
     (print-statement printer statement))
   (decf (printer-indent printer)))
 
-(defun assign-text (printer assign)
+(defgeneric assign-text (printer assign))
+
+(defmethod assign-text ((printer c-printer) assign)
   (format nil "~a = ~a"
           (expr-text printer (ir-assign-target assign))
           (expr-text printer (ir-assign-value assign))))

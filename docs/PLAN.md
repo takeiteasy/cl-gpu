@@ -53,7 +53,7 @@ OpenCL goes first when the backends start, as the cheaper second check that the 
 | Complex routines; f64 routines; rotations | [#39](https://github.com/communal-software/cl-gpu/issues/39), [#55](https://github.com/communal-software/cl-gpu/issues/55), [#41](https://github.com/communal-software/cl-gpu/issues/41) |
 | Sub-array views of a `gpu-array` ([done](kernels.md#views)), for cl-tensor storage | [#57](https://github.com/communal-software/cl-gpu/issues/57) |
 | MLX for cl-inference, independent of cl-gpu | [cl-inference#43](https://github.com/communal-software/cl-inference/issues/43) |
-| Body-only kernel output, so MLX can run DSL kernels as custom kernels | [#20](https://github.com/communal-software/cl-gpu/issues/20), [cl-inference#44](https://github.com/communal-software/cl-inference/issues/44) |
+| Embeddable Metal header, body and access descriptors | [Available](kernel-parts.md) |
 
 ## Limitations
 

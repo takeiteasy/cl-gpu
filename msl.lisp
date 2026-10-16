@@ -47,7 +47,9 @@
 (defmethod bitcast-text ((printer msl-printer) type operand)
   (format nil "as_type<~a>(~a)" (type-text printer type) operand))
 
-(defun position-name (printer attribute)
+(defgeneric position-name (printer attribute))
+
+(defmethod position-name ((printer msl-printer) attribute)
   (pushnew attribute (printer-positions printer) :test #'string=)
   (format nil "cl_gpu_~a" attribute))
 
