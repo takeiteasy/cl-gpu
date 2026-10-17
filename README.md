@@ -6,7 +6,7 @@ S-expression GPU kernel DSL for Common Lisp with Metal, CUDA\* and OpenCL\* back
 
 \*Planned.
 
-See the [plan](docs/PLAN.md) for status and phases. To run kernels, see [kernels and arrays](docs/kernels.md). For kernel internals: [forms](docs/kernel-forms.md), [types](docs/types.md), [arrays](docs/arrays.md), [intrinsics](docs/intrinsics.md), the [IR](docs/kernel-ir.md), the [printers](docs/printers.md), [embeddable output](docs/kernel-parts.md) and the [Metal runtime](docs/metal.md). For BLAS on the GPU, see [Level 1](docs/blas.md) and [matrices](docs/blas-matrices.md).
+See the [plan](docs/PLAN.md) for status and phases. To run kernels, see [kernels and arrays](docs/kernels.md). For kernel internals: [forms](docs/kernel-forms.md), [types](docs/types.md), [arrays](docs/arrays.md), [intrinsics](docs/intrinsics.md), the [IR](docs/kernel-ir.md), the [printers](docs/printers.md), [embeddable output](docs/kernel-parts.md) and the [Metal runtime](docs/metal.md). For BLAS on the GPU, see [Level 1](docs/blas.md) and [matrices](docs/blas-matrices.md). For N-dimensional operations, see [strided views](docs/strided-views.md), [axis reductions](docs/reductions.md) and [normalization](docs/normalization.md).
 
 ## Tests
 
@@ -26,7 +26,7 @@ The BLAS routines are tested against [trivial-simd/blas](https://github.com/comm
 sbcl --noinform --non-interactive --eval '(asdf:test-system "cl-gpu/blas")'
 ```
 
-All pass on SBCL, ECL and CCL.
+The reduction suites and a runnable example are described in [axis reductions](docs/reductions.md#tests). All suites pass on SBCL, ECL and CCL.
 
 ## License
 

@@ -1,6 +1,6 @@
 # Plan
 
-cl-gpu compiles Lisp kernel forms to Metal, CUDA and OpenCL source and runs them on device buffers. It supersedes the GPU-array role of libgpuarray for Common Lisp. [cl-tensor](https://github.com/communal-software/cl-tensor) uses it for device storage.
+cl-gpu compiles Lisp kernel forms to Metal source and runs them on device buffers. It supersedes the GPU-array role of libgpuarray for Common Lisp. CUDA and OpenCL backends are planned.
 
 ## Design
 
@@ -54,6 +54,7 @@ OpenCL goes first when the backends start, as the cheaper second check that the 
 | Sub-array views of a `gpu-array` ([done](kernels.md#views)), for cl-tensor storage | [#57](https://github.com/communal-software/cl-gpu/issues/57) |
 | MLX for cl-inference, independent of cl-gpu | [cl-inference#43](https://github.com/communal-software/cl-inference/issues/43) |
 | Embeddable Metal header, body and access descriptors | [Available](kernel-parts.md) |
+| Strided axis reductions, softmax and RMSNorm | [Available](reductions.md) |
 
 ## Limitations
 
@@ -67,3 +68,4 @@ Kernels print as Metal source and run through [`define-kernel`](kernels.md) on t
 - Kernel errors have no source location when compiled from an editor buffer with `C-c C-c` ([#27](https://github.com/communal-software/cl-gpu/issues/27)).
 - Metal reports a fixed 256-byte alignment for `:constant` view bindings ([#72](https://github.com/communal-software/cl-gpu/issues/72)); OpenCL needs its own ([#73](https://github.com/communal-software/cl-gpu/issues/73)).
 - Kernel pipelines of released devices stay cached ([#18](https://github.com/communal-software/cl-gpu/issues/18)).
+- Tensor device dispatch awaits cl-tensor storage and adapter work ([cl-tensor#12](https://github.com/communal-software/cl-tensor/issues/12), [cl-tensor#21](https://github.com/communal-software/cl-tensor/issues/21)). Reduction-specific limits are listed on the [reductions](reductions.md#limitations) page.

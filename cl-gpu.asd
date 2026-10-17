@@ -111,6 +111,33 @@
                              (:file "level3"))))
   :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/blas/tests"))))
 
+(asdf:defsystem "cl-gpu/reductions"
+  :description "Strided axis reductions and normalization on GPU arrays"
+  :license "GPL-3.0-only"
+  :depends-on ("cl-gpu")
+  :serial t
+  :components ((:module "reductions"
+                :serial t
+                :components ((:file "package") (:file "view")
+                             (:file "kernels") (:file "routines"))))
+  :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/reductions/tests"))))
+
+(asdf:defsystem "cl-gpu/reductions/tests"
+  :depends-on ("cl-gpu/reductions" "fiveam")
+  :components ((:file "tests/reductions"))
+  :perform (asdf:test-op (op component)
+             (declare (ignore op component))
+             (unless (uiop:symbol-call :cl-gpu/reductions/tests :run-tests)
+               (error "cl-gpu reductions tests failed"))))
+
+(asdf:defsystem "cl-gpu/reductions/metal/tests"
+  :depends-on ("cl-gpu/reductions/tests" "cl-gpu/metal")
+  :components ((:file "tests/reductions-metal"))
+  :perform (asdf:test-op (op component)
+             (declare (ignore op component))
+             (unless (uiop:symbol-call :cl-gpu/reductions/tests :run-metal-tests)
+               (error "cl-gpu Metal reductions tests failed"))))
+
 (asdf:defsystem "cl-gpu/blas/tests"
   :depends-on ("cl-gpu/blas" "cl-gpu/metal" "trivial-simd/blas" "float-features" "fiveam")
   :components ((:file "tests/blas"))
