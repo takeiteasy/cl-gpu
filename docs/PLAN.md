@@ -55,6 +55,7 @@ OpenCL goes first when the backends start, as the cheaper second check that the 
 | MLX for cl-inference, independent of cl-gpu | [cl-inference#43](https://github.com/communal-software/cl-inference/issues/43) |
 | Embeddable Metal header, body and access descriptors | [Available](kernel-parts.md) |
 | Strided axis reductions, softmax and RMSNorm | [Available](reductions.md) |
+| Broadcast elementwise operations and dtype conversion | [Available](elementwise.md) |
 
 ## Limitations
 
@@ -68,4 +69,4 @@ Kernels print as Metal source and run through [`define-kernel`](kernels.md) on t
 - Kernel errors have no source location when compiled from an editor buffer with `C-c C-c` ([#27](https://github.com/communal-software/cl-gpu/issues/27)).
 - Metal reports a fixed 256-byte alignment for `:constant` view bindings ([#72](https://github.com/communal-software/cl-gpu/issues/72)); OpenCL needs its own ([#73](https://github.com/communal-software/cl-gpu/issues/73)).
 - Kernel pipelines of released devices stay cached ([#18](https://github.com/communal-software/cl-gpu/issues/18)).
-- Tensor device dispatch awaits cl-tensor storage and adapter work ([cl-tensor#12](https://github.com/communal-software/cl-tensor/issues/12), [cl-tensor#21](https://github.com/communal-software/cl-tensor/issues/21)). Reduction-specific limits are listed on the [reductions](reductions.md#limitations) page.
+- Tensor device dispatch supports storage, reductions, normalization and f32 matrix operations. Elementwise and conversion integration is tracked in [cl-tensor#23](https://github.com/communal-software/cl-tensor/issues/23). Reduction-specific limits are listed on the [reductions](reductions.md#limitations) page.

@@ -945,6 +945,18 @@ BROADCAST, a vector among the nodes decides the type and a scalar of its element
                 (make-ir-intrinsic :intrinsic intrinsic
                                    :args (assemble-operands exprs statements)
                                    :type type)))
+             (:typed
+              (let ((types (second signature)))
+                (check-arity node args (length types) (length types))
+                (let ((exprs (lower-sequence args
+                                            (lambda (index previous)
+                                              (declare (ignore previous))
+                                              (parse-type (nth index types))))))
+                  (loop for expr in exprs for spec in types for arg in args
+                        unless (eq (ir-expr-type expr) (parse-type spec))
+                          do (type-fail arg "expected ~a" (type-description (parse-type spec))))
+                  (make-ir-intrinsic :intrinsic intrinsic :args exprs
+                                     :type (when (third signature) (parse-type (third signature)))))))
              (:atomic (lower-atomic node intrinsic args (second signature))))))
     (if (and (intrinsic-impure-p intrinsic) (not statement-p) (ir-expr-type expr))
         (spill expr 'old)

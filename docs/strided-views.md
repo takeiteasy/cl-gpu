@@ -1,17 +1,19 @@
 # Strided views
 
-`cl-gpu/reductions` describes N-dimensional layouts over existing GPU arrays. A view borrows its array; it does not copy elements or own a separate buffer.
+`cl-gpu` describes N-dimensional layouts over existing GPU arrays. A view borrows its array; it does not copy elements or own a separate buffer.
 
 ```lisp
-(asdf:load-system "cl-gpu/reductions")
+(asdf:load-system "cl-gpu")
 
-(cl-gpu/reductions:make-strided-view data '(2 3))
+(cl-gpu:make-strided-view data '(2 3))
 ;; Element (row column) is data[row*3 + column].
 
-(cl-gpu/reductions:make-strided-view data '(2 3)
-                                   :strides '(3 -1) :offset 2)
+(cl-gpu:make-strided-view data '(2 3)
+                          :strides '(3 -1) :offset 2)
 ;; Each row visits its three elements backward.
 ```
+
+The view type and accessors also belong to `cl-gpu/reductions`; both packages expose the same symbols. [Elementwise operations](elementwise.md) and reductions share these layouts.
 
 ## Layout
 

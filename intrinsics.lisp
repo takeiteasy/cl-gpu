@@ -5,6 +5,7 @@
 ;;;   (:barrier)       optional literal scope, no result
 ;;;   (:float N)       N operands of one float type (or float vector), same result
 ;;;   (:number N)      the same for any numeric type
+;;;   (:typed TYPES RESULT) fixed argument types and result (NIL for no value)
 ;;;   (:atomic KIND)   :rmw (ptr value), :cas (ptr expected desired), :load (ptr), :store (ptr value)
 ;;;
 ;;; A spelling is (KIND TEXT . OPTIONS) per target (:metal, :cuda, :opencl); NIL means
@@ -125,6 +126,7 @@
 (define-float-math sin "sin" "sin" "sinf" "sin")
 (define-float-math cos "cos" "cos" "cosf" "cos")
 (define-float-math tan "tan" "tan" "tanf" "tan")
+(define-float-math tanh "tanh" "tanh" "tanhf" "tanh")
 (define-float-math floor "floor" "floor" "floorf" "floor")
 (define-float-math ceiling "ceil" "ceil" "ceilf" "ceil")
 (define-float-math pow "pow" "pow" "powf" "pow" 2)

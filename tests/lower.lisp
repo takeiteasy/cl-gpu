@@ -532,3 +532,20 @@
     (fails "(local-array (atomic u32) 4)")
     (fails "(shared-array (ptr f32 :global) 4)")
     (signals gpu:kernel-syntax-error (lower-text "(shared-array nonsense 4)"))))
+
+(gpu::define-intrinsic typed-status (:typed ((gpu:ptr gpu:u32 :global) gpu:u32) gpu:u32)
+  :impure t :metal (:call "typed_status"))
+
+(test fixed-type-intrinsics-check-arguments
+  (is (stringp (gpu:kernel-source
+                (gpu:lower-kernel '(let ((x (typed-status out 1))) (setf (aref out 0) (+ x x)))
+                                  :arguments '((out (gpu:ptr gpu:u32 :global)))) :metal)))
+  (signals gpu:kernel-type-error
+    (gpu:lower-kernel '(typed-status out 1)
+                      :arguments '((out (gpu:ptr gpu:f32 :global)))))
+  (signals gpu:kernel-type-error
+    (gpu:lower-kernel '(typed-status out 1f0)
+                      :arguments '((out (gpu:ptr gpu:u32 :global)))))
+  (signals gpu:kernel-type-error
+    (gpu:lower-kernel '(typed-status out)
+                      :arguments '((out (gpu:ptr gpu:u32 :global))))))

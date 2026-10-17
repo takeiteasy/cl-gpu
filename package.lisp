@@ -7,6 +7,8 @@
    #:gpu-array #:make-gpu-array #:gpu-array-view #:make-gpu-array-view #:gpu-array-view-p
    #:gpu-array-view-owner #:gpu-array-view-offset #:to-device #:copy-into #:from-device #:free #:with-gpu-array
    #:gpu-array-length #:gpu-array-element-type #:gpu-array-device
+   #:strided-view #:strided-view-p #:make-strided-view
+   #:strided-view-data #:strided-view-shape #:strided-view-strides #:strided-view-offset
    #:synchronize
    ;; Backends
    #:*device* #:current-device #:register-backend

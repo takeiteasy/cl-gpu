@@ -58,7 +58,7 @@ The first suite uses a mock device and needs no backend. The second checks devic
 
 - One 256-thread group handles each reduction group. A few very long groups may underuse the GPU ([#74](https://github.com/communal-software/cl-gpu/issues/74)).
 - Each nonempty call allocates and uploads layout metadata. Metal uploads wait for earlier work on the device ([#49](https://github.com/communal-software/cl-gpu/issues/49)).
-- cl-tensor dispatch integration is separate ([cl-tensor#21](https://github.com/communal-software/cl-tensor/issues/21)), depending on its device storage work ([cl-tensor#12](https://github.com/communal-software/cl-tensor/issues/12)).
+- Destination forms accept `NIL` and allocate a result instead of rejecting the missing destination ([#77](https://github.com/communal-software/cl-gpu/issues/77)).
 - Output validation has an [irregular-layout workspace limitation](strided-views.md#limitations).
 
 [^execution]: Threads traverse group elements in strides of 256, combine partials in shared-memory trees and write final values directly to device storage. Metadata uses dimensions and signed strides, without host packing of input values. Kernels bind root buffers and incorporate GPU-array window offsets in their address arithmetic. Metal command buffers retain temporary buffers through completion.

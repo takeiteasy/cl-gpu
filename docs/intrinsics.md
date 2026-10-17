@@ -41,7 +41,7 @@ An atomic in value position runs where it is written and its result is bound to 
 
 | Intrinsic | Operands |
 |---|---|
-| `sqrt` `rsqrt` `exp` `log` `sin` `cos` `tan` `floor` `ceiling` | one float or float vector |
+| `sqrt` `rsqrt` `exp` `log` `sin` `cos` `tan` `tanh` `floor` `ceiling` | one float or float vector |
 | `pow` | two floats |
 | `fma` | three floats |
 | `abs` | one numeric |
