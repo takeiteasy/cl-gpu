@@ -13,7 +13,7 @@
 ;; Each row visits its three elements backward.
 ```
 
-The view type and accessors also belong to `cl-gpu/reductions`; both packages expose the same symbols. [Elementwise operations](elementwise.md) and reductions share these layouts.
+The view type and accessors also belong to `cl-gpu/reductions`; both packages expose the same symbols. [Elementwise operations](elementwise.md), reductions and [gather](gather.md) share these layouts.
 
 ## Layout
 
@@ -32,7 +32,7 @@ An element at coordinates `i` has address `offset + sum(i[a] * strides[a])`. Zer
 
 Views keep their data array alive. Freeing the owning GPU array invalidates its views. Free the array through `cl-gpu:free`; do not pass a strided view to `free`.
 
-Allocating [reductions](reductions.md) and [normalizers](normalization.md) return views over independent contiguous storage. The caller owns that result array:
+Allocating [reductions](reductions.md), [normalizers](normalization.md) and [gathers](gather.md) return views over independent contiguous storage. The caller owns that result array:
 
 ```lisp
 (let ((result (cl-gpu/reductions:sum input :axis -1)))

@@ -57,6 +57,7 @@ OpenCL goes first when the backends start, as the cheaper second check that the 
 | Strided axis reductions, softmax and RMSNorm | [Available](reductions.md) |
 | Broadcast elementwise operations and dtype conversion | [Available](elementwise.md) |
 | Reusable fused expressions over strided device views | [Available](expressions.md) |
+| Checked axis gather over strided device views | [Available](gather.md) |
 
 ## Limitations
 

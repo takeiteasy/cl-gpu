@@ -173,6 +173,31 @@
              (unless (uiop:symbol-call :cl-gpu/elementwise/tests :run-metal-tests)
                (error "cl-gpu Metal elementwise tests failed"))))
 
+(asdf:defsystem "cl-gpu/gather"
+  :description "Checked axis gathers over strided device views"
+  :license "GPL-3.0-only"
+  :depends-on ("cl-gpu")
+  :serial t
+  :components ((:module "gather" :serial t
+                :components ((:file "package") (:file "kernels") (:file "routines"))))
+  :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/gather/tests"))))
+
+(asdf:defsystem "cl-gpu/gather/tests"
+  :depends-on ("cl-gpu/gather" "fiveam")
+  :components ((:file "tests/gather"))
+  :perform (asdf:test-op (op component)
+             (declare (ignore op component))
+             (unless (uiop:symbol-call :cl-gpu/gather/tests :run-tests)
+               (error "cl-gpu gather tests failed"))))
+
+(asdf:defsystem "cl-gpu/gather/metal/tests"
+  :depends-on ("cl-gpu/gather/tests" "cl-gpu/metal")
+  :components ((:file "tests/gather-metal"))
+  :perform (asdf:test-op (op component)
+             (declare (ignore op component))
+             (unless (uiop:symbol-call :cl-gpu/gather/tests :run-metal-tests)
+               (error "cl-gpu Metal gather tests failed"))))
+
 (asdf:defsystem "cl-gpu/expressions"
   :description "Reusable fused expressions over strided device views"
   :license "GPL-3.0-only"
