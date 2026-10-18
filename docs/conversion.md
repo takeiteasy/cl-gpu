@@ -39,6 +39,5 @@ Floating widening preserves subnormals, infinities and signed zeros. Cross-forma
 ## Limitations
 
 - The supported format pairs exclude f64, complex values and direct f16/bf16-to-integer or integer-to-f16/bf16 calls.
-- Tensor-level conversion requires the device adapter work listed in [elementwise limitations](elementwise.md#limitations).
 
 [^bits]: Conversion computes rounding and format fields with integer operations, independently of the host floating-point environment. It uses no host element staging and no full-size intermediate format buffer. Overlapping destinations may still need device scratch.

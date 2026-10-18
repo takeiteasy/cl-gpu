@@ -96,3 +96,25 @@ The shim links MetalPerformanceShaders. With `cl-gpu/blas` loaded, `device-gemm`
 [^1]: A private buffer is rounded up to a multiple of 4 bytes, which Metal requires of blit copies; `buffer-size` still reports the requested size. A partial upload, at any byte offset, leaves the bytes around it unchanged. The private path is tested on Apple silicon by binding `*buffer-storage*`; it has not run on a discrete GPU.
 [^2]: `dispatch` uses Metal's non-uniform threadgroups, available on Apple silicon GPUs.
 [^3]: A simple vector whose element type matches the buffer's scalar is copied with one `memcpy`: `single-float` for `f32`, `double-float` for `f64`, `(signed-byte N)` for `iN` and `(unsigned-byte N)` for `uN`. `f16`, `bf16`, `bool` and every other sequence are converted one component at a time, and a specialised vector of another type given to `copy-from-buffer` receives the values coerced to its element type. 1,000,000 `f32` take about 1 ms by `memcpy` and about 30 ms otherwise (Apple M1).
+
+## Raw scalar transfers
+
+`cl-gpu:to-device`, `copy-into` and `from-device` accept `:raw t` to transfer scalar bit representations. The default transfers numeric values. Raw transfers require simple specialized vectors; boolean and vector element types are unsupported.
+
+| Device elements | Raw host vector elements |
+|---|---|
+| `f16`, `bf16` | `(unsigned-byte 16)` |
+| `f32`, `f64` | `single-float`, `double-float` |
+| Signed/unsigned integers | Matching signed/unsigned byte width |
+
+```lisp
+(cl-gpu:with-gpu-array
+    (data (cl-gpu:to-device
+           (make-array 2 :element-type '(unsigned-byte 16)
+                         :initial-contents '(#x8000 #x7c01))
+           :element-type 'cl-gpu:f16 :raw t))
+  (cl-gpu:from-device data :raw t))
+;; => #(#x8000 #x7c01), preserving signed zero and the NaN payload
+```
+
+Raw downloads allocate a matching specialized vector. `:into` requires that representation too. Array windows retain their byte offsets, partial transfers check window bounds, and failed uploads release their allocation. `make-gpu-array :initial-contents` retains numeric semantics; use `to-device :raw t` for encoded contents.

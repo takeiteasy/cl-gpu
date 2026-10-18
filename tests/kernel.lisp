@@ -519,3 +519,47 @@ Return the kernel-error signalled, or NIL if none."
              (is (and fasl (load fasl)))
              (is (gpu:find-kernel (intern "DOUBLED" '#:cl-gpu/tests/kernel)))))
       (ignore-errors (delete-file source)))))
+
+(defclass raw-transfer-device (mock-device) ())
+(defmethod gpu:device-store ((device raw-transfer-device) buffer sequence type offset)
+  (let ((width (/ (gpu:scalar-type-bits type) 8)))
+    (loop for value across sequence for i from 0
+          do (setf (aref buffer (+ offset (* i width))) value))))
+(defmethod gpu:device-load ((device raw-transfer-device) buffer sequence type offset)
+  (let ((width (/ (gpu:scalar-type-bits type) 8)))
+    (dotimes (i (length sequence))
+      (setf (aref sequence i) (aref buffer (+ offset (* i width)))))))
+
+(test raw-scalar-transfers-and-windows
+  (let* ((device (make-instance 'raw-transfer-device)) (gpu:*device* device))
+    (dolist (element '(gpu:f16 gpu:bf16 gpu:u16))
+      (let ((bits (make-array 4 :element-type '(unsigned-byte 16)
+                               :initial-contents '(0 32768 31745 65535))))
+        (gpu:with-gpu-array (data (gpu:to-device bits :element-type element :raw t))
+          (is (equalp bits (gpu:from-device data :raw t)))
+          (let ((window (gpu:make-gpu-array-view data 2 :offset 1)))
+            (gpu:copy-into window (make-array 2 :element-type '(unsigned-byte 16)
+                                              :initial-contents '(123 456)) :raw t)
+            (is (equalp #(123 456) (gpu:from-device window :raw t)))
+            (let ((into (make-array 1 :element-type '(unsigned-byte 16))))
+              (is (eq into (gpu:from-device window :into into :raw t)))
+              (is (= 123 (aref into 0))))
+            (signals gpu:gpu-error (gpu:copy-into window bits :raw t))
+            (signals gpu:gpu-error (gpu:from-device window :into bits :raw t)))
+          (signals gpu:gpu-error (gpu:copy-into data #(1 2) :raw t))
+          (signals gpu:gpu-error (gpu:from-device data :into #(0 0) :raw t)))))
+    (dolist (element '(gpu:bool (gpu:vec gpu:f32 2)))
+      (signals gpu:gpu-error (gpu:to-device #() :element-type element :raw t)))
+    (signals gpu:gpu-error (gpu:to-device #(1 2) :element-type 'gpu:f16 :raw t))))
+
+(defclass upload-failing-device (mock-device) ())
+(defmethod gpu:device-store ((device upload-failing-device) buffer sequence type offset)
+  (declare (ignore buffer sequence type offset))
+  (error "Injected upload failure"))
+
+(test failed-raw-upload-frees-allocation
+  (let ((device (make-instance 'upload-failing-device)))
+    (signals error
+      (gpu:to-device (make-array 1 :element-type '(unsigned-byte 16))
+                     :element-type 'gpu:f16 :device device :raw t))
+    (is (= 1 (freed device)))))

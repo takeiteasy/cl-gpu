@@ -49,6 +49,8 @@ Integer add, subtract, multiply, negate and abs wrap to the element width. Divis
 
 Ordinary calls queue device work. Integer division, float-to-integer conversion and clamp calls with view bounds read a small error flag and wait before returning. Data-dependent errors may leave some destination elements updated. Host transfers and `cl-gpu:synchronize` wait for queued work. Scratch and metadata storage follow the runtime's queued-buffer lifetime rules.
 
+The [cl-tensor device adapter](https://github.com/communal-software/cl-tensor/blob/trunk/docs/device.md) exposes elementwise operations through its tensor APIs.
+
 ## Tests and example
 
 ```lisp
@@ -64,7 +66,6 @@ Host tests cover layouts, validation, generated kernels, launch boundaries and c
 - Each nonempty call uploads layout metadata. Metal uploads wait for earlier device work ([#49](https://github.com/communal-software/cl-gpu/issues/49)).
 - Generic indexing uses O(rank) coordinate decoding per element; contiguous specialization and axis coalescing are tracked in [#76](https://github.com/communal-software/cl-gpu/issues/76).
 - Irregular destination uniqueness may require O(output elements) host workspace ([#75](https://github.com/communal-software/cl-gpu/issues/75)).
-- Elementwise calls in cl-tensor require adapter and storage-dtype integration ([cl-tensor#23](https://github.com/communal-software/cl-tensor/issues/23)).
 - f64, complex, bool and vector elements are outside this API. Execution uses Metal; other runtime backends are planned.
 
 [^math]: Kernels use precise math. Floating arithmetic and transcendental exceptional values follow Metal. Sigmoid uses a sign-dependent formula to avoid exponential overflow; SiLU multiplies by sigmoid. GELU uses `0.5*x*(1+tanh(sqrt(2/pi)*(x+0.044715*x³)))`; its cubic intermediate may overflow. Floating results need not match CPU arithmetic bit for bit. Conversion has the explicit rules on its own page.

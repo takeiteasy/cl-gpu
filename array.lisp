@@ -114,10 +114,25 @@ flattened into a vector specialised to the component type."
         components)
       sequence))
 
-(defun copy-into (array sequence)
-  "Store SEQUENCE in the first elements of ARRAY, in the form TO-DEVICE takes. Return ARRAY."
+(defun transfer-type (type raw)
+  (if (not raw) type
+      (progn
+        (unless (and (scalar-type-p type)
+                     (member (scalar-type-kind type) '(:float :signed :unsigned)))
+          (gpu-fail "raw transfers require numeric scalar elements"))
+        (if (member (scalar-type-name type) '(f16 bf16)) (parse-type 'u16) type))))
+
+(defun check-raw-vector (sequence type)
+  (unless (typep sequence `(simple-array ,(lisp-element-type type) (*)))
+    (gpu-fail "raw transfer requires a simple vector of ~s" (lisp-element-type type)))
+  sequence)
+
+(defun copy-into (array sequence &key raw)
+  "Store SEQUENCE in the first elements of ARRAY, in the form TO-DEVICE takes. Return ARRAY.
+With RAW, transfer a specialized vector of scalar bit representations."
   (let* ((type (gpu-array-element-type array))
-         (components (flat-components type sequence))
+         (transfer (transfer-type type raw))
+         (components (if raw (check-raw-vector sequence transfer) (flat-components type sequence)))
          (count (component-count type)))
     (unless (zerop (mod (length components) count))
       (gpu-fail "~d components are not whole elements of ~a"
@@ -125,26 +140,31 @@ flattened into a vector specialised to the component type."
     (unless (<= (/ (length components) count) (gpu-array-length array))
       (gpu-fail "~d elements do not fit an array of ~d"
                 (/ (length components) count) (gpu-array-length array)))
-    (device-store (gpu-array-device array) (live-buffer array) components type
+    (device-store (gpu-array-device array) (live-buffer array) components transfer
                   (array-byte-offset array))
     array))
 
-(defun to-device (sequence &key (element-type 'f32) device)
-  "A new array holding SEQUENCE: numbers, or for a vector ELEMENT-TYPE a sequence of components per
-element or all the components in one flat sequence."
+(defun to-device (sequence &key (element-type 'f32) device raw)
+  "Upload SEQUENCE into a new array. RAW transfers scalar bit representations."
   (let* ((type (parse-element-type element-type))
-         (components (flat-components type sequence)))
-    (make-gpu-array (ceiling (length components) (component-count type))
-                    :element-type type :device device :initial-contents components)))
+         (transfer (transfer-type type raw))
+         (components (if raw (check-raw-vector sequence transfer) (flat-components type sequence)))
+         (array (make-gpu-array (ceiling (length components) (component-count type))
+                                :element-type type :device device)))
+    (handler-case (copy-into array components :raw raw)
+      (error (condition) (free array) (error condition)))))
 
-(defun from-device (array &key into flat)
+(defun from-device (array &key into flat raw)
   "The contents of ARRAY in a new vector specialised to the element type, or in the first elements of
-INTO if given. A vector element is a vector of its components, or with FLAT the components are in one sequence."
+INTO if given. RAW transfers scalar bit representations. A vector element is a vector of its
+components, or with FLAT the components are in one sequence."
   (let* ((type (gpu-array-element-type array))
+         (transfer (transfer-type type raw))
          (count (component-count type))
          (limit (gpu-array-length array)))
+    (when (and raw into) (check-raw-vector into transfer))
     (flet ((load-into (components)
-             (device-load (gpu-array-device array) (live-buffer array) components type
+             (device-load (gpu-array-device array) (live-buffer array) components transfer
                          (array-byte-offset array))))
       (if (and (vector-type-p type) (not flat))
           (let* ((elements (or into (make-array limit)))
@@ -157,7 +177,7 @@ INTO if given. A vector element is a vector of its components, or with FLAT the 
               (setf (elt elements index)
                     (subseq components (* index count) (* (1+ index) count)))))
           (let ((components (or into (make-array (* count limit)
-                                                  :element-type (lisp-element-type type)))))
+                                                  :element-type (lisp-element-type transfer)))))
             (unless (and (zerop (mod (length components) count))
                          (<= (length components) (* count limit)))
               (gpu-fail "~d components do not fit from an array of ~d ~a"

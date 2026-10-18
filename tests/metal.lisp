@@ -744,3 +744,17 @@ kernel void present() {}")
       (signals gpu:gpu-error
         (funcall (kernel-function "view-constant") out (gpu:make-gpu-array-view in 4 :offset 1)
                  :grid 1)))))
+
+(test raw-half-transfer-exhaustive
+  (let ((bits (make-array 65536 :element-type '(unsigned-byte 16))))
+    (dotimes (i 65536) (setf (aref bits i) i))
+    (dolist (element '(gpu:f16 gpu:bf16))
+      (gpu:with-gpu-array (data (gpu:to-device bits :element-type element :raw t))
+        (is (equalp bits (gpu:from-device data :raw t)))
+        (let* ((window (gpu:make-gpu-array-view data 5 :offset 32766))
+               (values (subseq bits 32766 32771)))
+          (is (equalp values (gpu:from-device window :raw t)))
+          (gpu:copy-into window (reverse values) :raw t)
+          (is (equalp (reverse values) (gpu:from-device window :raw t)))))
+      (gpu:with-gpu-array (data (gpu:to-device #(1f0 -2f0) :element-type element))
+        (is (equalp #(1f0 -2f0) (gpu:from-device data)))))))
