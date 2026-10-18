@@ -1,0 +1,101 @@
+(require :asdf)
+(asdf:load-system "cl-gpu/metal")
+(asdf:load-system "cl-gpu/expressions")
+
+(defpackage #:cl-gpu/expressions/bench
+  (:use #:cl)
+  (:local-nicknames (#:gpu #:cl-gpu) (#:ex #:cl-gpu/expressions)
+                    (#:ew #:cl-gpu/elementwise) (#:red #:cl-gpu/reductions)))
+(in-package #:cl-gpu/expressions/bench)
+
+(defmacro with-result ((name form) &body body)
+  `(let ((,name ,form))
+     (unwind-protect (progn ,@body) (gpu:free (gpu:strided-view-data ,name)))))
+
+(defun composed-madd (a b)
+  (with-result (product (ew:multiply a b)) (ew:add product 1)))
+
+(defun composed-softmax (a)
+  (with-result (maximum (red:maximum a :axis -1 :keepdims t))
+    (with-result (shifted (ew:subtract a maximum))
+      (with-result (exponential (ew:exp shifted))
+        (with-result (sum (red:sum exponential :axis -1 :keepdims t))
+          (ew:divide exponential sum))))))
+
+(defun host-values (view)
+  (let* ((shape (gpu:strided-view-shape view))
+         (storage (gpu:from-device (gpu:strided-view-data view)))
+         (strides (gpu:strided-view-strides view)))
+    (loop for row below (aref shape 0) append
+      (loop for column below (aref shape 1)
+            collect (aref storage (+ (gpu:strided-view-offset view)
+                                     (* row (aref strides 0)) (* column (aref strides 1))))))))
+
+(defun expected-values (kind a b)
+  (let* ((values (host-values a)) (width (aref (gpu:strided-view-shape a) 1)))
+    (if (eq kind :madd)
+        (loop with right = (coerce (host-values b) 'vector)
+              for value in values for i from 0
+              collect (+ 1d0 (* (float value 1d0) (float (aref right (mod i (length right))) 1d0))))
+        (loop for row on values by (lambda (remaining) (nthcdr width remaining)) append
+          (let* ((row (subseq row 0 width)) (maximum (reduce #'max row))
+                 (exponentials (mapcar (lambda (v) (exp (- (float v 1d0) maximum))) row))
+                 (sum (reduce #'+ exponentials)))
+            (mapcar (lambda (v) (/ v sum)) exponentials))))))
+
+(defun invoke (function out)
+  (let ((result (funcall function)))
+    (unwind-protect (gpu:synchronize)
+      (unless out (gpu:free (gpu:strided-view-data result))))))
+
+(defun elapsed-us (function out iterations)
+  (let ((start (get-internal-real-time)))
+    (dotimes (i iterations) (invoke function out))
+    (/ (* 1d6 (- (get-internal-real-time) start)) internal-time-units-per-second iterations)))
+
+(defun measure (name function expected out)
+  (let ((cold (elapsed-us function out 1)))
+    (let ((result (funcall function)))
+      (unwind-protect
+           (assert (every (lambda (a b) (<= (abs (- a b)) (* 1d-4 (max 1d0 (abs a))))) expected (host-values result)))
+        (unless out (gpu:free (gpu:strided-view-data result)))))
+    (dotimes (i 3) (invoke function out))
+    (let ((samples (sort (loop repeat 3 collect (elapsed-us function out 10)) #'<)))
+      (format t "~a | ~,1f | ~,1f~%" name cold (second samples)))))
+
+(defun run ()
+  (format t "Device: ~a~%Lisp: ~a ~a~%Case | first call us | warm median us~%"
+          (cl-gpu/metal:device-name (gpu:current-device)) (lisp-implementation-type) (lisp-implementation-version))
+  (let ((host (make-array (* 256 256) :element-type 'single-float)))
+    (dotimes (i (length host)) (setf (aref host i) (/ (float (mod i 31) 1f0) 31f0)))
+    (gpu:with-gpu-array (data (gpu:to-device host))
+      (gpu:with-gpu-array (right (gpu:to-device (make-array (* 256 256) :element-type 'single-float :initial-element 2f0)))
+        (gpu:with-gpu-array (destination (gpu:make-gpu-array (* 256 256)))
+          (dolist (layout '(:contiguous :reversed :broadcast))
+            (let ((a (if (eq layout :reversed)
+                         (gpu:make-strided-view data '(256 256) :strides '(256 -1) :offset 255)
+                         (gpu:make-strided-view data '(256 256))))
+                  (b (gpu:make-strided-view right (if (eq layout :broadcast) '(1 256) '(256 256))))
+                  (out (gpu:make-strided-view destination '(256 256))))
+              (dolist (kind '(:madd :softmax))
+                (let* ((body (if (eq kind :madd) '(:add (:multiply a b) 1)
+                                 '(:divide (:exp (:subtract a (:maximum a)))
+                                           (:sum (:exp (:subtract a (:maximum a)))))))
+                       (plan (ex:make-expression-plan '(a b) body))
+                       (expected (expected-values kind a b)))
+                  (dolist (destinationp '(nil t))
+                    (let ((composed (lambda ()
+                                      (if destinationp
+                                          (with-result (value (if (eq kind :madd) (composed-madd a b) (composed-softmax a)))
+                                            (ew:convert! out value))
+                                          (if (eq kind :madd) (composed-madd a b) (composed-softmax a)))))
+                          (fused (lambda ()
+                                   (if destinationp
+                                       (ex:execute-expression! out plan (list a b) :axis -1)
+                                       (ex:execute-expression plan (list a b) :axis -1)))))
+                      (measure (format nil "~a ~a ~:[allocate~;destination~] composed" layout kind destinationp)
+                               composed expected destinationp)
+                      (measure (format nil "~a ~a ~:[allocate~;destination~] expression" layout kind destinationp)
+                               fused expected destinationp))))))))))))
+
+(run)

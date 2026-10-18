@@ -172,3 +172,28 @@
              (declare (ignore op component))
              (unless (uiop:symbol-call :cl-gpu/elementwise/tests :run-metal-tests)
                (error "cl-gpu Metal elementwise tests failed"))))
+
+(asdf:defsystem "cl-gpu/expressions"
+  :description "Reusable fused expressions over strided device views"
+  :license "GPL-3.0-only"
+  :depends-on ("cl-gpu/elementwise" "cl-gpu/reductions")
+  :serial t
+  :components ((:module "expressions" :serial t
+                :components ((:file "package") (:file "plan") (:file "kernels") (:file "execute"))))
+  :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/expressions/tests"))))
+
+(asdf:defsystem "cl-gpu/expressions/tests"
+  :depends-on ("cl-gpu/expressions" "fiveam")
+  :components ((:file "tests/expressions"))
+  :perform (asdf:test-op (op component)
+             (declare (ignore op component))
+             (unless (uiop:symbol-call :cl-gpu/expressions/tests :run-tests)
+               (error "cl-gpu expression tests failed"))))
+
+(asdf:defsystem "cl-gpu/expressions/metal/tests"
+  :depends-on ("cl-gpu/expressions/tests" "cl-gpu/metal")
+  :components ((:file "tests/expressions-metal"))
+  :perform (asdf:test-op (op component)
+             (declare (ignore op component))
+             (unless (uiop:symbol-call :cl-gpu/expressions/tests :run-metal-tests)
+               (error "cl-gpu Metal expression tests failed"))))
