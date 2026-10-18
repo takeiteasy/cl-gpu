@@ -177,3 +177,26 @@
       (setf (events device) nil)
       (signals gpu:gpu-error (g:gather source ids))
       (is (null (events device))))))
+
+(defclass helper-mock-device (mock-device)
+  ((sources :initform nil :accessor helper-sources)))
+
+(defmethod gpu:device-prepare :before ((device helper-mock-device) source entry &key precise-math)
+  (declare (ignore entry precise-math))
+  (push source (helper-sources device)))
+
+(test gather-and-elementwise-helpers-coexist
+  (let ((device (make-instance 'helper-mock-device)))
+    (gpu:with-gpu-array (data (gpu:make-gpu-array 3 :device device))
+      (gpu:with-gpu-array (ids (gpu:make-gpu-array 2 :element-type 'gpu:i32 :device device))
+        (gpu:with-gpu-array (target (gpu:make-gpu-array 3 :element-type 'gpu:i32 :device device))
+          (let ((input (gpu:make-strided-view data '(3)))
+                (indices (gpu:make-strided-view ids '(2)))
+                (out (gpu:make-strided-view target '(3))))
+            (with-result (result (g:gather input indices))
+              (is (equalp #(2) (gpu:strided-view-shape result))))
+            (cl-gpu/elementwise:convert! out input)
+            (cl-gpu/elementwise:divide! out out out)
+            (dolist (helper '("cl_gpu_gather_error" "cl_gpu_ew_convert" "cl_gpu_ew_error"))
+              (is (some (lambda (source) (search helper source)) (helper-sources device))))))))
+    (is (null (buffers device)))))

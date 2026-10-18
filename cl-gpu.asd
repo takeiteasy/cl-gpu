@@ -183,7 +183,7 @@
   :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/gather/tests"))))
 
 (asdf:defsystem "cl-gpu/gather/tests"
-  :depends-on ("cl-gpu/gather" "fiveam")
+  :depends-on ("cl-gpu/gather" "cl-gpu/elementwise" "fiveam")
   :components ((:file "tests/gather"))
   :perform (asdf:test-op (op component)
              (declare (ignore op component))

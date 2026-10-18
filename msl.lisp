@@ -87,11 +87,16 @@ inline T cl_gpu_fmod(T a, T b) {
 }
 ")
 
+(defvar *msl-helpers* (make-hash-table :test #'equal))
+
+(defun register-msl-helper (name source)
+  (setf (gethash name *msl-helpers*) source))
+
 (defmethod helper-definition ((printer msl-printer) name)
   (cond ((string= name "cl_gpu_atomic_cas") (atomic-cas-helpers))
         ((string= name "cl_gpu_mod") *floor-mod-helper*)
         ((string= name "cl_gpu_fmod") *floor-mod-float-helper*)
-        (t (error "unknown helper ~a" name))))
+        (t (or (gethash name *msl-helpers*) (error "unknown helper ~a" name)))))
 
 (defmethod print-prelude ((printer msl-printer) stream)
   (format stream "#include <metal_stdlib>~%using namespace metal;~%~%")

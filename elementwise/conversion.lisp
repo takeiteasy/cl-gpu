@@ -97,13 +97,12 @@ inline ulong cl_gpu_ew_convert(ulong raw, ulong source, ulong destination, ulong
 (gpu::define-intrinsic %convert-bits (:number 4)
   :metal (:helper "cl_gpu_ew_convert"))
 
-(defmethod gpu::helper-definition :around ((printer gpu:msl-printer) name)
-  (cond ((string= name "cl_gpu_ew_convert") *conversion-helper*)
-        ((string= name "cl_gpu_ew_error")
-         "inline void cl_gpu_ew_error(device uint* status) {
+(gpu::register-msl-helper "cl_gpu_ew_convert" *conversion-helper*)
+(gpu::register-msl-helper
+ "cl_gpu_ew_error"
+ "inline void cl_gpu_ew_error(device uint* status) {
     atomic_fetch_or_explicit(reinterpret_cast<device atomic_uint*>(status), 1u, memory_order_relaxed);
 }")
-        (t (call-next-method))))
 
 (defun unsigned-element (element)
   (ecase (gpu:scalar-type-bits (gpu:parse-type element))

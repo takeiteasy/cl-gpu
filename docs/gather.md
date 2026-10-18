@@ -61,7 +61,7 @@ After gathering succeeds, `gather!` queues the final copy into the destination. 
 
 The example gathers a batch of embedding vectors. Protocol tests cover validation, scheduling, transfer sizes, launch boundaries and scratch cleanup. Metal tests compare independent coordinate references across storage types and layouts, exercise aliases and guard padding, copy every f16/bf16 encoding, and inject submission/completion failures.
 
-Both suites run on SBCL, ECL and CCL.
+Both suites run on SBCL, ECL and CCL. Protocol checks also load elementwise operations and compile gather bounds, numeric conversion and arithmetic error helpers in the same image.
 
 ## Limitations
 

@@ -57,6 +57,8 @@ A parameter whose name is reserved on the target, or that ends in `_` and a numb
 
 ## Metal
 
+Optional operation systems share named MSL helper definitions. A kernel includes only the helpers it uses.[^helpers]
+
 Parameters are bound by position.
 
 | Parameter | Declared | Bound by |
@@ -89,3 +91,5 @@ Atomics take the pointer as written. `atomic-cas` calls the helper `cl_gpu_atomi
 
 [^1]: Metal's compare-exchange takes its expected operand by pointer, overwrites it with the value seen, and may fail spuriously. The helper retries a spurious failure and returns the old value, as CUDA's `atomicCAS` does.
 [^2]: C promotes 8- and 16-bit operands to `int`, so `(+ a b)` on `u8` would otherwise exceed 255 where the kernel wraps.
+
+[^helpers]: Internal `cl-gpu::register-msl-helper` accepts a name and source string. Registration replaces that name only; gather and elementwise definitions coexist in either load order. Register during system initialization, before concurrent compilation. Unknown names signal an error.

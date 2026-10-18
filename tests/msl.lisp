@@ -269,3 +269,16 @@
                            :arguments "((p (ptr f32 :global)) (d (ptr i64 :global)))")))
     (is (contains-p text "(p + 1)[0] = 1.0f;"))
     (is (contains-p text "d[0] = p - (p + 2);"))))
+
+(test registered-msl-helpers-coexist-with-builtins
+  (let ((gpu::*msl-helpers* (make-hash-table :test #'equal))
+        (printer (make-instance 'gpu:msl-printer)))
+    (gpu::register-msl-helper "extension_a" "inline void extension_a() {}")
+    (gpu::register-msl-helper "extension_b" "inline void extension_b() {}")
+    (is (string= "inline void extension_a() {}" (gpu::helper-definition printer (copy-seq "extension_a"))))
+    (is (string= "inline void extension_b() {}" (gpu::helper-definition printer "extension_b")))
+    (is (search "cl_gpu_atomic_cas" (gpu::helper-definition printer "cl_gpu_atomic_cas")))
+    (is (search "cl_gpu_mod" (gpu::helper-definition printer "cl_gpu_mod")))
+    (signals error (gpu::helper-definition printer "missing_helper"))
+    (gpu::register-msl-helper "extension_a" "replacement")
+    (is (string= "replacement" (gpu::helper-definition printer "extension_a")))))

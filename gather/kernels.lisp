@@ -6,12 +6,11 @@
 (gpu::define-intrinsic %bounds-error (:typed ((gpu:ptr gpu:u32 :global)) nil)
   :impure t :metal (:helper "cl_gpu_gather_error"))
 
-(defmethod gpu::helper-definition :around ((printer gpu:msl-printer) name)
-  (if (string= name "cl_gpu_gather_error")
-      "inline void cl_gpu_gather_error(device uint* status) {
+(gpu::register-msl-helper
+ "cl_gpu_gather_error"
+ "inline void cl_gpu_gather_error(device uint* status) {
     atomic_fetch_or_explicit(reinterpret_cast<device atomic_uint*>(status), 1u, memory_order_relaxed);
-}"
-      (call-next-method)))
+}")
 
 (defun decode-offsets (offsets)
   ;; TODO: O(rank) decoding per element; coalesce axes and specialize contiguous layouts (#84).
