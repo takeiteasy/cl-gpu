@@ -35,7 +35,7 @@ The core Metal and OpenCL backends are available. CUDA remains deferred.
 | Backend | Testing without a GPU of that vendor |
 |---|---|
 | OpenCL | Apple's OpenCL 1.2 runs on the Mac, and [PoCL](https://portablecl.org) (`brew install pocl`, `pocl-opencl-icd` on Linux) is a CPU implementation of OpenCL 3.0. Apple's lacks `f64` on Apple silicon and OpenCL 2.0 atomics. |
-| CUDA | Printer snapshot tests need nothing. `nvcc -ptx` or NVRTC checks that generated source compiles on a Linux machine with the toolkit, without a GPU. Running kernels needs a rented GPU, on `workflow_dispatch` only. |
+| CUDA | No printer or runtime is implemented; the backend is deferred. |
 
 The [OpenCL runtime](opencl.md) implements the same device protocol as Metal. [Linux validation](opencl-linux.md) covers SBCL with the ICD loader and PoCL; its x86-64 CI runs manually and on tags.
 

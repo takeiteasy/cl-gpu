@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      CL_GPU_LOG_DIR: ${{ runner.temp }}/opencl-logs
+      CL_GPU_LOG_DIR: /tmp/cl-gpu-opencl-logs
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install SBCL, ICD loader, PoCL and Lisp dependencies
