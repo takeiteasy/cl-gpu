@@ -1,6 +1,6 @@
 # Plan
 
-cl-gpu compiles Lisp kernel forms to Metal source and runs them on device buffers. It supersedes the GPU-array role of libgpuarray for Common Lisp. CUDA and OpenCL backends are planned.
+cl-gpu compiles Lisp kernel forms to Metal or OpenCL source and runs them on device buffers. It supersedes the GPU-array role of libgpuarray for Common Lisp. The CUDA backend is planned.
 
 ## Design
 
@@ -26,18 +26,18 @@ The cl-webgpu shader DSL (a 3bgl-shaders fork) informs the inference tests but c
 | 4 | Metal runtime | [#4](https://github.com/communal-software/cl-gpu/issues/4) | Done |
 | 5 | `define-kernel` and buffer API | [#5](https://github.com/communal-software/cl-gpu/issues/5) | Done |
 | 6 | CUDA backend | [#6](https://github.com/communal-software/cl-gpu/issues/6) | Deferred |
-| 7 | OpenCL backend | [#7](https://github.com/communal-software/cl-gpu/issues/7) | Deferred |
+| 7 | [OpenCL backend](opencl.md) | | Done |
 
 ## Order
 
-The kernel DSL and the Metal runtime stabilise first: the open `dsl`, `arch` and `api` tickets (#8–#18) come before CUDA and OpenCL, which are low priority.
+The core Metal and OpenCL backends are available. CUDA remains deferred.
 
 | Backend | Testing without a GPU of that vendor |
 |---|---|
 | OpenCL | Apple's OpenCL 1.2 runs on the Mac, and [PoCL](https://portablecl.org) (`brew install pocl`, `pocl-opencl-icd` on Linux) is a CPU implementation of OpenCL 3.0. Apple's lacks `f64` on Apple silicon and OpenCL 2.0 atomics. |
 | CUDA | Printer snapshot tests need nothing. `nvcc -ptx` or NVRTC checks that generated source compiles on a Linux machine with the toolkit, without a GPU. Running kernels needs a rented GPU, on `workflow_dispatch` only. |
 
-OpenCL goes first when the backends start, as the cheaper second check that the backend protocol in `device.lisp` is not shaped around Metal.
+The [OpenCL runtime](opencl.md) implements the same device protocol as Metal.
 
 ## Later
 
@@ -61,7 +61,7 @@ OpenCL goes first when the backends start, as the cheaper second check that the 
 
 ## Limitations
 
-Kernels print as Metal source and run through [`define-kernel`](kernels.md) on the [Metal runtime](metal.md). There are no CUDA or OpenCL printers.
+Kernels print as Metal or OpenCL source and run through [`define-kernel`](kernels.md). There is no CUDA printer. OpenCL operation and platform limits are listed in [OpenCL limitations](opencl.md#limitations).
 
 - Tested on SBCL, ECL and CCL; no CI matrix yet ([#32](https://github.com/communal-software/cl-gpu/issues/32)). Other implementations: [#33](https://github.com/communal-software/cl-gpu/issues/33)–[#36](https://github.com/communal-software/cl-gpu/issues/36).
 - No `loop`, `do`, `tagbody` or `go` ([kernel forms](kernel-forms.md)).
@@ -69,6 +69,6 @@ Kernels print as Metal source and run through [`define-kernel`](kernels.md) on t
 - Vectors cannot be compared, and `min`, `max`, `clamp`, `pow` and `fma` do not broadcast a scalar ([#23](https://github.com/communal-software/cl-gpu/issues/23)).
 - CUDA needs operators and broadcast for vector types ([#12](https://github.com/communal-software/cl-gpu/issues/12)).
 - Kernel errors have no source location when compiled from an editor buffer with `C-c C-c` ([#27](https://github.com/communal-software/cl-gpu/issues/27)).
-- Metal reports a fixed 256-byte alignment for `:constant` view bindings ([#72](https://github.com/communal-software/cl-gpu/issues/72)); OpenCL needs its own ([#73](https://github.com/communal-software/cl-gpu/issues/73)).
+- Metal reports a fixed 256-byte alignment for `:constant` view bindings ([#72](https://github.com/communal-software/cl-gpu/issues/72)).
 - Kernel pipelines of released devices stay cached ([#18](https://github.com/communal-software/cl-gpu/issues/18)).
 - Tensor device dispatch supports storage, elementwise operations, conversion, reductions, normalization and f32 matrix operations. Tensor expression integration is tracked in [cl-tensor#26](https://github.com/communal-software/cl-tensor/issues/26). Reduction-specific limits are listed on the [reductions](reductions.md#limitations) page.

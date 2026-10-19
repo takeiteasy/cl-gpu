@@ -50,6 +50,7 @@
                (:file "lower")
                (:file "printer")
                (:file "msl")
+               (:file "opencl")
                (:file "device")
                (:file "array")
                (:file "view")
@@ -68,16 +69,21 @@
                (:file "tests/lower")
                (:file "tests/printer")
                (:file "tests/msl")
+               (:file "tests/opencl-printer")
                (:file "tests/kernel") (:file "tests/parts"))
   :perform (asdf:test-op (op component)
              (declare (ignore op component))
              (unless (uiop:symbol-call :cl-gpu/tests :run-tests)
                (error "cl-gpu tests failed"))))
 
+(asdf:defsystem "cl-gpu/transfer"
+  :depends-on ("cl-gpu" "cffi")
+  :components ((:file "transfer")))
+
 (asdf:defsystem "cl-gpu/metal"
   :description "Metal runtime for cl-gpu"
   :license "GPL-3.0-only"
-  :depends-on ("cl-gpu" "cffi" "float-features" "bordeaux-threads")
+  :depends-on ("cl-gpu/transfer" "cffi" "float-features" "bordeaux-threads")
   :serial t
   :components ((:module "metal"
                 :serial t
@@ -222,3 +228,20 @@
              (declare (ignore op component))
              (unless (uiop:symbol-call :cl-gpu/expressions/tests :run-metal-tests)
                (error "cl-gpu Metal expression tests failed"))))
+
+(asdf:defsystem "cl-gpu/opencl"
+  :description "OpenCL 1.2 runtime"
+  :license "GPL-3.0-only"
+  :depends-on ("cl-gpu/transfer")
+  :serial t
+  :components ((:module "opencl" :serial t
+                :components ((:file "package") (:file "ffi") (:file "runtime"))))
+  :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/opencl/tests"))))
+
+(asdf:defsystem "cl-gpu/opencl/tests"
+  :depends-on ("cl-gpu/opencl" "cl-gpu/tests")
+  :components ((:file "tests/opencl"))
+  :perform (asdf:test-op (op component)
+             (declare (ignore op component))
+             (unless (uiop:symbol-call :cl-gpu/opencl/tests :run-tests)
+               (error "OpenCL tests failed"))))

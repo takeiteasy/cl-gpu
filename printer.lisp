@@ -140,7 +140,8 @@
   (let ((target (printer-target printer)))
     (dolist (type (ir-kernel-scalar-types kernel))
       (let ((support (type-support type target)))
-        (unless (eq support t)
+        (unless (or (eq support t)
+                    (and (eq target :opencl) (stringp support)))
           (target-fail "~a is not available on ~(~a~)~@[ without ~a~]"
                        (type-description type) target support))))
     (dolist (statement (ir-kernel-body kernel))

@@ -81,7 +81,7 @@ not zero. Provided by cl-gpu/blas, which backends may specialize."))
   (or *device*
       (if *backends*
           (funcall (cdr (first *backends*)))
-          (gpu-fail "no GPU backend is loaded; load cl-gpu/metal"))))
+          (gpu-fail "no GPU backend is loaded; load cl-gpu/metal or cl-gpu/opencl"))))
 
 (defun synchronize (&optional (device (current-device)))
   "Block until every launch on DEVICE, by default the current device, has finished.

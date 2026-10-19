@@ -13,7 +13,8 @@
 (in-suite :cl-gpu/metal)
 
 (defun run-tests ()
-  (run! :cl-gpu/metal))
+  (let ((gpu:*device* (metal:default-device)))
+    (run! :cl-gpu/metal)))
 
 (defun kernel-source (text arguments)
   (let ((*package* (find-package '#:cl-gpu/metal/tests/kernel)))
@@ -660,7 +661,7 @@ kernel void present() {}")
 
 (test vector-elements-round-trip-through-specialised-vectors
   (dolist (storage '(:shared :private))
-    (let ((gpu::*device* nil)
+    (let ((gpu:*device* (metal:default-device))
           (metal:*buffer-storage* storage))
       (gpu:with-gpu-array (array (gpu:to-device '(#(1 2 3) (4 5 6)) :element-type '(gpu:vec gpu:f32 3)))
         (let ((elements (gpu:from-device array)))
@@ -682,7 +683,7 @@ kernel void present() {}")
 
 (defmacro with-each-storage (&body body)
   `(dolist (storage '(:shared :private))
-     (let ((gpu::*device* nil)
+     (let ((gpu:*device* (metal:default-device))
            (metal:*buffer-storage* storage))
        ,@body)))
 

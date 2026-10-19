@@ -77,7 +77,7 @@
    #:kernel-parameter #:kernel-parameter-variable #:kernel-parameter-name #:kernel-parameter-mode
    #:embedded-msl-printer
    ;; Printing
-   #:kernel-source #:print-kernel #:c-printer #:msl-printer
+   #:kernel-source #:print-kernel #:c-printer #:msl-printer #:opencl-printer
    ;; Conditions
    #:source-location
    #:source-location-file

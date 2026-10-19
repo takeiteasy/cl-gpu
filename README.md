@@ -2,11 +2,11 @@
 
 > **Work in progress.** This project is under development; expect missing features and breaking changes.
 
-S-expression GPU kernel DSL for Common Lisp with Metal, CUDA\* and OpenCL\* backends.
+S-expression GPU kernel DSL for Common Lisp with Metal, OpenCL and CUDA\* backends.
 
-\*Planned.
+\*CUDA is planned.
 
-See the [plan](docs/PLAN.md) for status and phases. To run kernels, see [kernels and arrays](docs/kernels.md). For kernel internals: [forms](docs/kernel-forms.md), [types](docs/types.md), [arrays](docs/arrays.md), [intrinsics](docs/intrinsics.md), the [IR](docs/kernel-ir.md), the [printers](docs/printers.md), [embeddable output](docs/kernel-parts.md) and the [Metal runtime](docs/metal.md). For BLAS on the GPU, see [Level 1](docs/blas.md) and [matrices](docs/blas-matrices.md). For N-dimensional operations, see [strided views](docs/strided-views.md), [axis reductions](docs/reductions.md) and [normalization](docs/normalization.md). For broadcast arithmetic and dtype conversion, see [elementwise operations](docs/elementwise.md) and [conversion](docs/conversion.md).
+See the [plan](docs/PLAN.md) for status and phases. To run kernels, see [kernels and arrays](docs/kernels.md). For kernel internals: [forms](docs/kernel-forms.md), [types](docs/types.md), [arrays](docs/arrays.md), [intrinsics](docs/intrinsics.md), the [IR](docs/kernel-ir.md), the [printers](docs/printers.md), [embeddable output](docs/kernel-parts.md), the [Metal runtime](docs/metal.md) and the [OpenCL runtime](docs/opencl.md). For BLAS on the GPU, see [Level 1](docs/blas.md) and [matrices](docs/blas-matrices.md). For N-dimensional operations, see [strided views](docs/strided-views.md), [axis reductions](docs/reductions.md) and [normalization](docs/normalization.md). For broadcast arithmetic and dtype conversion, see [elementwise operations](docs/elementwise.md) and [conversion](docs/conversion.md).
 
 Reusable arithmetic and reduction plans are described in [device expressions](docs/expressions.md), with [complete-call measurements](docs/expressions-performance.md). For indexed slice copies, see [checked device gather](docs/gather.md).
 

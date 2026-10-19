@@ -1,6 +1,6 @@
 # Printers
 
-A printer writes a lowered kernel as source for one target. Metal is the only target so far; the [Metal runtime](metal.md) runs its output.
+A printer writes a lowered kernel as source for one target. Metal and OpenCL targets run through the [Metal](metal.md) and [OpenCL](opencl.md) runtimes.
 
 ```lisp
 (cl-gpu:kernel-source
@@ -39,7 +39,7 @@ For hosts that generate signatures, use [embeddable kernel parts](kernel-parts.m
 
 | Function | Result |
 |---|---|
-| `(kernel-source kernel target)` | the source as a string; `target` is `:metal` |
+| `(kernel-source kernel target)` | the source as a string; `target` is `:metal` or `:opencl` |
 | `(print-kernel kernel printer [stream])` | writes the source; `printer` is an instance such as `(make-instance 'msl-printer)` |
 
 `c-printer` holds what the targets share: statements, operator precedence, literals and names. A target subclasses it, as `msl-printer` does.
@@ -87,7 +87,13 @@ Atomics take the pointer as written. `atomic-cas` calls the helper `cl_gpu_atomi
 | `f16`, `f32` literals | `2.5h`, `1.5f` |
 | `bf16` literal | `static_cast<bfloat>(0.5f)` |
 | the minimum `i32` or `i64` | `(-2147483647 - 1)` |
-| `convert`, `bitcast` | `static_cast<T>(x)`, `as_type<T>(x)` |
+| `convert`, `bitcast` | Metal: `static_cast<T>(x)`, `as_type<T>(x)`; OpenCL: scalar casts/vector `convert_T(x)`, `as_T(x)` |
+
+## OpenCL
+
+`opencl-printer` emits OpenCL C 1.2 with `__kernel` entry points. Parameters bind in declaration order: scalars/vectors pass by value, global/constant pointers bind buffers, and shared pointers bind local-memory byte counts.
+
+Shared arrays use `__local` storage at kernel scope and cooperative initialization before the body; private arrays initialize in place with `{0}`. Work-item intrinsics call OpenCL built-ins directly. Optional floating-point types emit extension pragmas. See [OpenCL types and compilation](opencl.md#types-and-compilation).
 
 [^1]: Metal's compare-exchange takes its expected operand by pointer, overwrites it with the value seen, and may fail spuriously. The helper retries a spurious failure and returns the old value, as CUDA's `atomicCAS` does.
 [^2]: C promotes 8- and 16-bit operands to `int`, so `(+ a b)` on `u8` would otherwise exceed 255 where the kernel wraps.

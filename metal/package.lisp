@@ -1,5 +1,5 @@
 (defpackage #:cl-gpu/metal
-  (:use #:cl)
+  (:use #:cl #:cl-gpu/transfer)
   (:local-nicknames (#:gpu #:cl-gpu))
   (:export
    #:metal-error #:metal-compile-error #:metal-error-message

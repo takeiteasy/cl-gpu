@@ -125,4 +125,4 @@ Tests of `if`, `for`, `while`, `and`, `or` and `not` must be `bool`: write `(> n
 `ir-kernel-scalar-types` lists the scalar types a lowered kernel uses, so a printer can reject it early.
 
 [^1]: `*read-default-float-format*` applies when the kernel text is read, so `1.5` is `f64` under `double-float`. Write `1.5f0` or `1.5d0` to be explicit.
-[^2]: A signed or float `mod` calls the helper `cl_gpu_mod` or `cl_gpu_fmod`, which the source defines when the kernel uses it. It adds the divisor only when the remainder is non-zero and the signs differ, so it cannot overflow. As with `/`, a zero divisor and `MIN % -1` are undefined.
+[^2]: A signed or float `mod` calls a target-specific floored-remainder helper, which the source defines when the kernel uses it. It adds the divisor only when the remainder is non-zero and the signs differ, so it cannot overflow. As with `/`, a zero divisor and `MIN % -1` are undefined.

@@ -18,6 +18,8 @@
     (from-device out)))   ; => #(5.0 5.0 ...)
 ```
 
+Load `cl-gpu/metal` or `cl-gpu/opencl` to choose a runtime. See [OpenCL](opencl.md) for device selection and exact-grid launch requirements.
+
 ## `define-kernel`
 
 `(define-kernel name ((parameter type) ...) [docstring] form...)` defines the function `name`. Its arguments are one value per parameter, then keywords:
@@ -133,7 +135,7 @@ A launch that fails on the GPU reports at the next wait on its device, not at th
 
 ## Errors
 
-`gpu-error` covers a bad launch (missing `:grid`, wrong argument type, an array from another device or already freed, an element type that differs from the pointer's, shared memory over the [device limit](arrays.md#shared-memory)) and backend failures; `metal-error` is a subclass. `kernel-type-error` is signalled when the definition is compiled, with the `file:line:col` of the offending form or parameter type.[^4]
+`gpu-error` covers a bad launch (missing `:grid`, wrong argument type, an array from another device or already freed, an element type that differs from the pointer's, shared memory over the [device limit](arrays.md#shared-memory)) and backend failures; `metal-error` and `opencl-error` are subclasses. `kernel-type-error` is signalled when the definition is compiled, with the `file:line:col` of the offending form or parameter type.[^4]
 
 ## Limitations
 

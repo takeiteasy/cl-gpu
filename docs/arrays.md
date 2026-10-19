@@ -36,7 +36,7 @@ A kernel declares fixed-size arrays with `shared-array` and `local-array`. Each 
 
 ## Local arrays
 
-A local array is declared where the form appears. `:zero` prints `= {}`. Indexing with a runtime index may spill the array to slow memory.
+A local array is declared where the form appears. `:zero` prints `= {}` on Metal and `= {0}` on OpenCL. Indexing with a runtime index may spill the array to slow memory.
 
 [^1]: Metal needs threadgroup storage at kernel scope, so the printer declares every shared array at the top of the kernel and clears the `:zero` ones there. The clear uses `thread_index_in_threadgroup` and `threads_per_threadgroup`, added as kernel parameters.
-[^2]: The check ignores alignment padding, so the device compiler may still refuse a kernel just under the limit.
+[^2]: The common check ignores alignment padding, so the device compiler may still refuse a kernel just under the limit. OpenCL additionally checks compiled local-memory usage after setting dynamic local arguments.
