@@ -1,0 +1,35 @@
+name: Linux OpenCL
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pocl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CL_GPU_LOG_DIR: ${{ runner.temp }}/opencl-logs
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install SBCL, ICD loader, PoCL and Lisp dependencies
+        run: |
+          mkdir -p "$CL_GPU_LOG_DIR"
+          bash scripts/opencl/setup.sh 2>&1 | tee "$CL_GPU_LOG_DIR/setup.log"
+      - name: Validate core, OpenCL and example
+        run: bash scripts/opencl/run.sh
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: opencl-linux-x86-64
+          path: ${{ env.CL_GPU_LOG_DIR }}
+          if-no-files-found: warn

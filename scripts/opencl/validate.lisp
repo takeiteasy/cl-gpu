@@ -1,0 +1,35 @@
+(require :asdf)
+(load (merge-pathnames "setup.lisp"
+                       (uiop:ensure-directory-pathname
+                        (or (uiop:getenv "CL_GPU_QUICKLISP")
+                            (merge-pathnames ".cache/cl-gpu/quicklisp/" (user-homedir-pathname))))))
+(push (uiop:getcwd) asdf:*central-registry*)
+
+(let ((mode (first (uiop:command-line-arguments))))
+  (cond
+    ((equal mode "bootstrap")
+     (ql:quickload "cl-gpu/opencl/tests"))
+    ((equal mode "core")
+     (asdf:test-system "cl-gpu"))
+    ((equal mode "runtime")
+     (asdf:load-system "cl-gpu/opencl")
+     (let ((device (uiop:symbol-call :cl-gpu/opencl :default-device)))
+       (format t "~&Device: ~a~%Extensions: ~s~%"
+               (uiop:symbol-call :cl-gpu/opencl :device-name device)
+               (uiop:symbol-call :cl-gpu/opencl :device-extensions device))
+       (unless (member "cl_khr_fp64" (uiop:symbol-call :cl-gpu/opencl :device-extensions device)
+                       :test #'equal)
+         (error "PoCL validation requires cl_khr_fp64"))
+       (unwind-protect
+            (progn
+              (asdf:test-system "cl-gpu/opencl")
+              (load "examples/opencl.lisp")
+              (let ((result (uiop:symbol-call :cl-gpu/examples/opencl :run)))
+                (format t "~&SAXPY: ~s~%" result)
+                (assert (equalp #(2.0 4.0 6.0 8.0) result))))
+         (uiop:symbol-call :cl-gpu/opencl :release device))))
+    ((equal mode "environment")
+     (format t "~&Lisp: ~a ~a~%" (lisp-implementation-type) (lisp-implementation-version))
+     (dolist (dist (ql-dist:all-dists))
+       (format t "Quicklisp dist: ~a ~a~%" (ql-dist:name dist) (ql-dist:version dist))))
+    (t (error "Unknown validation mode: ~s" mode))))

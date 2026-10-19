@@ -99,6 +99,33 @@
       (funcall kernel out :grid 8 :group 4)
       (is (equalp #(6 6) (gpu:from-device out))))))
 
+(test combined-static-and-dynamic-local-limit
+  (let* ((gpu:*device* (ocl:default-device))
+         (kernel (define-test-kernel "opencl-local-limit"
+                   "(let ((tile (shared-array u32 4 :zero)) (i (local-id 0)))
+                      (setf (aref scratch i) (+ i 1)) (barrier)
+                      (setf (aref tile i) (aref scratch i)) (barrier)
+                      (setf (aref out i) (aref tile (- 3 i))))"
+                   "((out (ptr u32 :global)) (scratch (ptr u32 :shared)))")))
+    (gpu:with-gpu-array (out (gpu:make-gpu-array 4 :element-type 'gpu:u32))
+      (signals gpu:gpu-error
+        (funcall kernel out (floor (gpu:device-shared-memory-limit gpu:*device*) 4) :grid 4 :group 4))
+      (funcall kernel out 4 :grid 4 :group 4)
+      (is (equalp #(4 3 2 1) (gpu:from-device out))))))
+
+(test multiple-dynamic-local-arguments-share-one-limit
+  (let* ((device (ocl:default-device))
+         (prepared (prepare "(setf (aref out 0) (+ (aref a 0) (aref b 0)))"
+                            "((out (ptr u32 :global)) (a (ptr u32 :shared)) (b (ptr u32 :shared)))" device))
+         (bytes (+ 4 (floor (gpu:device-shared-memory-limit device) 2)))
+         (buffer (gpu:device-allocate device 4)))
+    (unwind-protect
+         (signals ocl:opencl-error
+           (gpu:device-launch device prepared
+                              (list (list :buffer buffer 0) (list :shared bytes) (list :shared bytes))
+                              '(1 1 1) '(1 1 1)))
+      (gpu:device-free device buffer))))
+
 (test concurrent-launches-bind-arguments-atomically
   (let* ((device (ocl:default-device))
          (kernel (define-test-kernel "opencl-thread" "(setf (aref out (global-id 0)) n)"
@@ -121,6 +148,75 @@
                  (is (not (null (prepare "(setf (aref out 0) x)" (format nil "((out (ptr ~a :global)) (x ~a))" type type)))))
                  (signals ocl:opencl-compile-error
                    (prepare "(setf (aref out 0) x)" (format nil "((out (ptr ~a :global)) (x ~a))" type type)))))))
+
+(test optional-f64-arithmetic
+  (let ((gpu:*device* (ocl:default-device)))
+    (if (member "cl_khr_fp64" (ocl:device-extensions gpu:*device*) :test #'equal)
+        (let ((kernel (define-test-kernel "opencl-double"
+                        "(declare (precise-math))
+                         (let ((i (global-id 0))) (setf (aref out i) (+ (aref in i) x)))"
+                        "((out (ptr f64 :global)) (in (ptr f64 :global)) (x f64))")))
+          (gpu:with-gpu-array (in (gpu:to-device #(16777217d0 -16777217d0) :element-type 'gpu:f64))
+            (gpu:with-gpu-array (out (gpu:make-gpu-array 2 :element-type 'gpu:f64))
+              (funcall kernel out in 1.0000000000000002d0 :grid 2 :group 1)
+              (is (equalp #(16777218d0 -16777216d0) (gpu:from-device out)))
+              (gpu:copy-into in #(0d0 1d0))
+              (funcall kernel out in 1.0000000000000002d0 :grid 2 :group 1)
+              (is (= 1.0000000000000002d0 (aref (gpu:from-device out) 0))))))
+        (skip "Device lacks cl_khr_fp64"))))
+
+(test release-drains-work-and-clears-native-resources
+  (let* ((device (ocl:open-device (first (ocl:available-devices))))
+         (prepared nil)
+         (buffer nil))
+    (unwind-protect
+         (progn
+           (setf prepared (prepare "(setf (aref out 0) n)" "((out (ptr u32 :global)) (n u32))" device)
+                 buffer (gpu:device-allocate device 4))
+           (gpu:device-launch device prepared (list (list :buffer buffer 0) (list :bytes 'gpu:u32 42))
+                              '(1 1 1) '(1 1 1))
+           (is (not (null (ocl::device-events device))))
+           (ocl:release device)
+           (is (null (ocl::device-events device)))
+           (is (null (ocl::device-kernels device)))
+           (is (null (ocl::prepared-handle prepared)))
+           (is (null (ocl::device-context device)))
+           (is (null (ocl::device-queue device)))
+           (signals ocl:opencl-error
+             (gpu:device-launch device prepared (list (list :buffer buffer 0) (list :bytes 'gpu:u32 42))
+                                '(1 1 1) '(1 1 1)))
+           (gpu:device-free device buffer)
+           (is (null (ocl::buffer-handle buffer))))
+      (when buffer (gpu:device-free device buffer))
+      (ocl:release device))))
+
+(test recover-after-build-and-sub-buffer-argument-errors
+  (let* ((device (ocl:open-device (first (ocl:available-devices))))
+         (offset (lcm 4 (gpu:device-offset-alignment device :global)))
+         (buffer nil))
+    (unwind-protect
+         (progn
+           (signals ocl:opencl-compile-error (gpu:device-prepare device "invalid OpenCL" "k"))
+           (is (null (ocl::device-kernels device)))
+           (let ((prepared (prepare "(setf (aref out 0) n)" "((out (ptr u32 :global)) (n u32))" device)))
+             (setf buffer (gpu:device-allocate device (+ offset 4)))
+             (dotimes (i 4)
+               (signals ocl:opencl-error
+                 (gpu:device-launch device prepared
+                                    (list (list :buffer buffer offset) (list :buffer buffer -1))
+                                    '(1 1 1) '(1 1 1))))
+             (is (null (ocl::device-events device)))
+             (gpu:device-launch device prepared
+                                (list (list :buffer buffer offset) (list :bytes 'gpu:u32 42))
+                                '(1 1 1) '(1 1 1))
+             (let ((result (vector 0)))
+               (gpu:device-load device buffer result 'gpu:u32 offset)
+               (is (equalp #(42) result)))
+             (is (null (ocl::device-events device)))
+             (ocl:release device)
+             (is (null (ocl::prepared-handle prepared)))))
+      (when buffer (gpu:device-free device buffer))
+      (ocl:release device))))
 
 (test vectors-conversions-bitcasts-and-remainders
   (let ((gpu:*device* (ocl:default-device))
@@ -193,9 +289,11 @@
       (gpu:device-free device buffer))))
 
 (test release-cleans-up-after-execution-error
-  (let ((device (ocl:open-device (first (ocl:available-devices)))))
+  (let* ((device (ocl:open-device (first (ocl:available-devices))))
+         (prepared nil))
     (unwind-protect
          (float-features:with-float-traps-masked (:invalid :divide-by-zero :overflow :underflow :inexact)
+           (setf prepared (prepare "(setf (aref out 0) 1)" "((out (ptr u32 :global)))" device))
            (let ((event (ocl::created (status)
                           (cffi:foreign-funcall "clCreateUserEvent"
                                                :pointer (ocl::device-context device) :pointer status :pointer))))
@@ -203,6 +301,9 @@
              (ocl::check (cffi:foreign-funcall "clSetUserEventStatus" :pointer event :int32 -1 :int32)
                          "set user event failure"))
            (signals ocl:opencl-error (ocl:release device))
+           (is (null (ocl::device-events device)))
+           (is (null (ocl::device-kernels device)))
+           (is (null (ocl::prepared-handle prepared)))
            (is (null (ocl::device-queue device)))
            (is (null (ocl::device-context device))))
       (ocl:release device))))

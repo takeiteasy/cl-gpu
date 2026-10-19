@@ -45,7 +45,7 @@
    (kernels :initform nil :accessor device-kernels)))
 
 (defstruct buffer handle device size)
-(defstruct prepared handle device)
+(defstruct prepared handle device local-memory)
 
 (defun device-id (device)
   (device-info-id (if (typep device 'opencl-device) (device-info device) device)))
@@ -242,7 +242,14 @@
         (error 'opencl-compile-error
                :message (format nil "kernel ~a failed (~d): ~a"
                                 entry-name (cffi:mem-ref status :int32) (build-log program device))))
-      (make-prepared :device device :handle handle))))
+      (let ((prepared (make-prepared :device device :handle handle)))
+        (handler-case
+            (progn
+              (setf (prepared-local-memory prepared) (kernel-info device prepared +kernel-local-memory+ :uint64))
+              prepared)
+          (error (condition)
+            (%release-kernel handle)
+            (error condition)))))))
 
 (defmethod gpu:device-prepare ((device opencl-device) source entry-name &key precise-math)
   (bt:with-lock-held ((device-lock device))
@@ -303,6 +310,10 @@
       (fail "grid and group need three positive dimensions"))
     (reap-events device)
     (check-group device prepared grid group)
+    (when (> (+ (prepared-local-memory prepared)
+                (loop for argument in arguments when (eq (first argument) :shared) sum (second argument)))
+             (gpu:device-shared-memory-limit device))
+      (fail "kernel exceeds device local-memory limit"))
     (let ((owned nil))
       (unwind-protect
            (progn

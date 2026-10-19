@@ -37,7 +37,7 @@ The core Metal and OpenCL backends are available. CUDA remains deferred.
 | OpenCL | Apple's OpenCL 1.2 runs on the Mac, and [PoCL](https://portablecl.org) (`brew install pocl`, `pocl-opencl-icd` on Linux) is a CPU implementation of OpenCL 3.0. Apple's lacks `f64` on Apple silicon and OpenCL 2.0 atomics. |
 | CUDA | Printer snapshot tests need nothing. `nvcc -ptx` or NVRTC checks that generated source compiles on a Linux machine with the toolkit, without a GPU. Running kernels needs a rented GPU, on `workflow_dispatch` only. |
 
-The [OpenCL runtime](opencl.md) implements the same device protocol as Metal.
+The [OpenCL runtime](opencl.md) implements the same device protocol as Metal. [Linux validation](opencl-linux.md) covers SBCL with the ICD loader and PoCL; its x86-64 CI runs manually and on tags.
 
 ## Later
 
@@ -63,7 +63,7 @@ The [OpenCL runtime](opencl.md) implements the same device protocol as Metal.
 
 Kernels print as Metal or OpenCL source and run through [`define-kernel`](kernels.md). There is no CUDA printer. OpenCL operation and platform limits are listed in [OpenCL limitations](opencl.md#limitations).
 
-- Tested on SBCL, ECL and CCL; no CI matrix yet ([#32](https://github.com/communal-software/cl-gpu/issues/32)). Other implementations: [#33](https://github.com/communal-software/cl-gpu/issues/33)–[#36](https://github.com/communal-software/cl-gpu/issues/36).
+- Tested on SBCL, ECL and CCL; Linux OpenCL CI uses SBCL. The broader Lisp and Metal CI matrix remains pending ([#32](https://github.com/communal-software/cl-gpu/issues/32)). Other implementations: [#33](https://github.com/communal-software/cl-gpu/issues/33)–[#36](https://github.com/communal-software/cl-gpu/issues/36).
 - No `loop`, `do`, `tagbody` or `go` ([kernel forms](kernel-forms.md)).
 - Swizzles are read-only ([#22](https://github.com/communal-software/cl-gpu/issues/22)).
 - Vectors cannot be compared, and `min`, `max`, `clamp`, `pow` and `fma` do not broadcast a scalar ([#23](https://github.com/communal-software/cl-gpu/issues/23)).

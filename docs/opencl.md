@@ -53,7 +53,7 @@ Buffers start at zero. Host transfers preserve scalar and vector layouts, includ
 - Without `:group`, OpenCL chooses the local size. Cooperative kernels should specify their required group dimensions.
 - Launches queue in order. `synchronize`, host reads and host writes wait for preceding launches and report execution errors.
 - Global and constant views bind through sub-buffers. Their byte offsets must be multiples of the device's reported base-address alignment. Host transfers accept unaligned view offsets.
-- Shared-memory checks include static arrays and dynamic local arguments. OpenCL also checks compiled local-memory usage before enqueueing.
+- Shared-memory checks include static arrays and dynamic local arguments. OpenCL also checks compiled local-memory usage before enqueueing.[^local-memory]
 
 ## Types and compilation
 
@@ -63,21 +63,21 @@ The printer supports baseline integer types, `f32`, vectors, local boolean expre
 
 ## Setup and tests
 
-macOS uses the system OpenCL framework. Linux uses `libOpenCL.so.1` or `libOpenCL.so`; install an ICD loader and an OpenCL 1.2-capable device implementation such as PoCL.
+macOS uses the system OpenCL framework. Linux uses `libOpenCL.so.1` or `libOpenCL.so`; install an ICD loader and an OpenCL 1.2-capable device implementation such as PoCL. See [Linux setup and validation](opencl-linux.md) for Ubuntu, ARM64 Lima and CI commands.
 
 ```sh
 sbcl --noinform --non-interactive --eval '(asdf:test-system "cl-gpu")'
 sbcl --noinform --non-interactive --eval '(asdf:test-system "cl-gpu/opencl")'
 ```
 
-The core suite includes printer tests without loading OpenCL. The runtime suite requires a device and fails explicitly when none is available. Local runtime validation uses Apple M1.
+The core suite includes printer tests without loading OpenCL. The runtime suite requires a device and fails explicitly when none is available. Executed f64 arithmetic is conditional on `cl_khr_fp64`; the Linux PoCL validation requires that extension.
 
 ## Limitations
 
 - Higher-level operation parity is separate work: Metal-specific helpers, expression device restrictions and non-divisible operation launchers require porting ([operation parity](https://github.com/communal-software/cl-gpu/issues/86)).
-- Linux loader/runtime validation on PoCL is pending ([Linux validation](https://github.com/communal-software/cl-gpu/issues/87)).
 - Kernel `bf16`, images, samplers, SVM and OpenCL 2.x features are unsupported.
 - One queue lock serializes encoding; host staging adds memory allocation and copying ([runtime performance](https://github.com/communal-software/cl-gpu/issues/88)).
 - Released devices remain keys in the core kernel cache ([pipeline cache](https://github.com/communal-software/cl-gpu/issues/18)); their native OpenCL kernels are released.
 
 [^errors]: `opencl-error` derives from `cl-gpu:gpu-error`; `opencl-compile-error` derives from `opencl-error`. Runtime API errors include their operation and numeric OpenCL status.
+[^local-memory]: The DSL accounts for static arrays from the kernel IR. Direct `device-launch` calls check the sum of dynamic local arguments plus the driver's reported static usage; that static report can be zero on PoCL.

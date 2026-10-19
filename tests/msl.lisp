@@ -73,8 +73,9 @@
 ;;; Compiling the output
 
 (defun metal-available-p ()
-  (zerop (nth-value 2 (uiop:run-program '("xcrun" "-sdk" "macosx" "-f" "metal")
-                                        :ignore-error-status t :output nil :error-output nil))))
+  (and (member :darwin *features*)
+       (zerop (nth-value 2 (uiop:run-program '("xcrun" "-sdk" "macosx" "-f" "metal")
+                                            :ignore-error-status t :output nil :error-output nil)))))
 
 (defun compile-metal (source)
   "Compile SOURCE with the Metal compiler. Return NIL, or the compiler's complaints."
