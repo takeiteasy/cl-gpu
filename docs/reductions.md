@@ -39,7 +39,7 @@ Results remove reduced dimensions unless `:keepdims t` retains them at size one.
 
 ## Precision and empty inputs
 
-Inputs hold f32, f16 or bf16. Arithmetic and shared partials use f32; value results retain the input type and round on store. Arg results hold i64. There is no f64 or widened accumulation option. Floating-point reduction order differs from a sequential CPU sum; exceptional values follow backend arithmetic without a special NaN policy.
+Inputs hold f32, f16, bf16 or f64. f64 arithmetic and shared partials use f64 on [native-capable devices](native-f64.md); other types compute in f32. Value results retain the input type and round on store. Arg results hold i64. There is no selectable accumulation precision. Floating-point reduction order differs from a sequential CPU sum; exceptional values follow backend arithmetic without a special NaN policy. Extrema use strict comparisons and retain the earlier logical index on equality; NaNs therefore depend on traversal and tree order, rather than always propagating.
 
 Empty groups produce zero for `sum` and one for `prod`. Mean and extrema signal an error if an output needs an empty group. Empty outputs perform no launches but still validate arguments.
 

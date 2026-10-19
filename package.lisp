@@ -13,6 +13,8 @@
    ;; Backends
    #:*device* #:current-device #:register-backend
    #:device-target #:device-shared-memory-limit #:device-allocate #:device-free #:device-store #:device-load
+   #:device-native-type-p #:gpu-unsupported-capability
+   #:unsupported-capability-device #:unsupported-capability-operation #:unsupported-capability-element-type
    #:device-offset-alignment
    #:device-prepare #:device-launch #:device-synchronize #:device-gemm #:device-gemv
    ;; Reader

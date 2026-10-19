@@ -31,7 +31,8 @@
          (lessp (member operation '(minimum argmin)))
          (read-value `(convert f32 (aref x at)))
          (update (if (eq operation 'prod) '* '+)))
-    `(define-kernel ,(kernel-name operation element)
+    (sublis (when (eq element 'f64) '((f32 . f64)))
+     `(define-kernel ,(kernel-name operation element)
          ((x (ptr ,element :global)) (y (ptr ,(if indexp 'i64 element) :global))
           (metadata (ptr i64 :global)) (kept u32) (rank u32) (width i64)
           (xbase i64) (ybase i64) (first-group i64))
@@ -70,11 +71,12 @@
                  ,(if indexp '(aref indices 0)
                       `(convert ,element ,(if (eq operation 'mean)
                                              '(/ (aref tile 0) (convert f32 width))
-                                             '(aref tile 0))))))))))
+                                             '(aref tile 0)))))))))))
 
 (defmacro define-normalizer (operation element)
   (let ((softp (eq operation 'softmax)))
-    `(define-kernel ,(kernel-name operation element)
+    (sublis (when (eq element 'f64) '((f32 . f64)))
+     `(define-kernel ,(kernel-name operation element)
          ((x (ptr ,element :global)) (y (ptr ,element :global)) (weights (ptr ,element :global))
           (metadata (ptr i64 :global)) (kept u32) (rank u32) (width i64)
           (xbase i64) (ybase i64) (wbase i64) (first-group i64)
@@ -119,14 +121,15 @@
                                   (* ,(if softp '(exp (- v value)) 'v) scale
                                      ,(if softp 1.0
                                           '(if (= weighted 1)
-                                               (convert f32 (aref weights wt)) weight))))))))))))))
+                                               (convert f32 (aref weights wt)) weight)))))))))))))))
 
 (defmacro define-scatter (element)
   `(define-kernel ,(kernel-name 'scatter element)
        ((x (ptr ,element :global)) (y (ptr ,element :global))
         (metadata (ptr i64 :global)) (rank u32) (n i64) (base i64) (start i64))
-     (let ((i (+ start (convert i64 (global-id 0)))))
-       (when (< i n)
+     (let ((i start) (lane (convert i64 (global-id 0))))
+       (when (< lane (- n start))
+         (incf i lane)
          (let ((to base))
            (declare (type i64 to))
            ,(coordinate-code 'i 0 'rank 'to 2)
@@ -134,7 +137,7 @@
 
 (defmacro define-all-kernels ()
   `(progn
-     ,@(loop for element in '(f32 f16 bf16)
+     ,@(loop for element in '(f32 f16 bf16 f64)
              append (append (loop for operation in '(sum mean prod minimum maximum argmin argmax)
                                   collect `(define-reducer ,operation ,element))
                             (loop for operation in '(softmax rmsnorm)

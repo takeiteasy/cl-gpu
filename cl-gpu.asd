@@ -165,7 +165,8 @@
 
 (asdf:defsystem "cl-gpu/elementwise/tests"
   :depends-on ("cl-gpu/elementwise" "fiveam")
-  :components ((:file "tests/elementwise"))
+  :serial t
+  :components ((:file "tests/elementwise") (:file "tests/elementwise-reference"))
   :perform (asdf:test-op (op component)
              (declare (ignore op component))
              (unless (uiop:symbol-call :cl-gpu/elementwise/tests :run-tests)
@@ -245,3 +246,21 @@
              (declare (ignore op component))
              (unless (uiop:symbol-call :cl-gpu/opencl/tests :run-tests)
                (error "OpenCL tests failed"))))
+
+(asdf:defsystem "cl-gpu/strided/opencl/tests"
+  :depends-on ("cl-gpu/elementwise/tests" "cl-gpu/reductions/tests" "cl-gpu/opencl")
+  :components ((:file "tests/strided-opencl")))
+
+(asdf:defsystem "cl-gpu/elementwise/opencl/tests"
+  :depends-on ("cl-gpu/strided/opencl/tests")
+  :perform (asdf:test-op (op component)
+             (declare (ignore op component))
+             (unless (uiop:symbol-call :cl-gpu/strided/opencl/tests :run-elementwise-tests)
+               (error "OpenCL elementwise tests failed"))))
+
+(asdf:defsystem "cl-gpu/reductions/opencl/tests"
+  :depends-on ("cl-gpu/strided/opencl/tests")
+  :perform (asdf:test-op (op component)
+             (declare (ignore op component))
+             (unless (uiop:symbol-call :cl-gpu/strided/opencl/tests :run-reduction-tests)
+               (error "OpenCL reduction tests failed"))))

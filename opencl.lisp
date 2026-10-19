@@ -44,12 +44,17 @@
                 (and (pointer-type-p type) (eq :private (pointer-type-space type))))
         (target-fail "invalid OpenCL parameter type ~a" (type-description type))))))
 
+(defvar *opencl-helpers* (make-hash-table :test #'equal))
+
+(defun register-opencl-helper (name source)
+  (setf (gethash name *opencl-helpers*) source))
+
 (defmethod print-prelude ((printer opencl-printer) stream)
   (dolist (extension (sort (copy-list (opencl-extensions printer)) #'string<))
     (format stream "#ifndef ~a~%#error Required extension ~a~%#endif~%#pragma OPENCL EXTENSION ~a : enable~%"
             extension extension extension))
   (dolist (helper (reverse (printer-helpers printer)))
-    (write-string helper stream)))
+    (write-string (gethash helper *opencl-helpers* helper) stream)))
 
 (defmethod print-signature ((printer opencl-printer) kernel stream)
   (format stream "__kernel void ~a(~{~a~^, ~}) {~%"

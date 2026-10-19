@@ -12,10 +12,12 @@
 (defun run-tests () (run! :cl-gpu/reductions))
 (defun run-metal-tests () (run! :cl-gpu/reductions/metal))
 
-(defclass mock-device () ((launches :initform 0 :accessor launches)))
+(defclass mock-device () ((launches :initform 0 :accessor launches)
+                         (allocations :initform 0 :accessor allocations)))
 (defmethod gpu:device-allocate ((device mock-device) bytes)
+  (incf (allocations device))
   (make-array bytes :element-type '(unsigned-byte 8) :initial-element 0))
-(defmethod gpu:device-free ((device mock-device) buffer) (declare (ignore buffer)))
+(defmethod gpu:device-free ((device mock-device) buffer) (declare (ignore buffer)) (decf (allocations device)))
 (defmethod gpu:device-store ((device mock-device) buffer sequence type offset)
   (declare (ignore buffer sequence type offset)))
 (defmethod gpu:device-target ((device mock-device)) :metal)
@@ -115,3 +117,25 @@
       (is (= 10 (cl-gpu/reductions::view-base view)))
       (signals gpu:gpu-error (red:make-strided-view nested '(5)))
       (signals gpu:gpu-error (red:make-strided-view nested '(4) :offset 1)))))
+
+(test native-f64-reductions-rejected-before-launch
+  (dolist (size '(0 3))
+    (with-mock-data (device data size gpu:f64)
+      (let ((input (red:make-strided-view data (list size))))
+        (dolist (function (list #'red:sum #'red:mean #'red:prod #'red:minimum #'red:maximum
+                               #'red:argmin #'red:argmax #'red:softmax #'red:rmsnorm))
+          (signals gpu:gpu-unsupported-capability (funcall function input :axis #())))
+        (signals gpu:gpu-unsupported-capability (red:sum! input input :axis #()))
+        (is (= 1 (allocations device)))
+        (is (zerop (launches device)))))))
+
+(test f64-reduction-source-precision
+  (dolist (operation '(red:sum red:mean red:prod red:minimum red:maximum red:argmin red:argmax red:softmax red:rmsnorm))
+    (let* ((kernel (gpu:find-kernel (red::kernel-name operation 'gpu:f64)))
+           (source (gpu:kernel-source (gpu:kernel-ir kernel) :opencl)))
+      (is (search "double" source))
+      (is (not (search "float" source))))))
+
+(test rmsnorm-default-validates-input
+  (signals gpu:gpu-error (red:rmsnorm nil))
+  (signals gpu:gpu-error (red:rmsnorm! nil nil)))

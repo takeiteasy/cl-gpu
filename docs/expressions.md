@@ -98,7 +98,7 @@ Protocol tests cover validation, cache reuse, launch boundaries, capability fail
 - A single 256-thread group handles each reduction group; long groups can underuse the device ([#74](https://github.com/communal-software/cl-gpu/issues/74)).
 - Coordinate decoding costs O(rank) per element ([#76](https://github.com/communal-software/cl-gpu/issues/76)); irregular destination uniqueness may need O(output elements) host workspace ([#75](https://github.com/communal-software/cl-gpu/issues/75)).
 - Metadata uploads and completion waits synchronize the device ([#49](https://github.com/communal-software/cl-gpu/issues/49)); pipelines of released devices remain cached ([#18](https://github.com/communal-software/cl-gpu/issues/18)).
-- Metal is the execution target. f64 support on capable backends is tracked in [#81](https://github.com/communal-software/cl-gpu/issues/81).
+- Metal is the expression execution target; fused f64 expressions are unsupported. Standalone f64 operations have a separate [support matrix](native-f64.md#support).
 
 [^cache]: A plan caches kernels by resolved expression, operand storage/scalar kinds, result type, mask presence and copy/predicate mode. Layout metadata carries dimensions, strides and axis grouping at runtime, so ranks and axis sets also reuse compatible variants. Each kernel caches prepared pipelines by device; publication is locked, and compilation failures remain retryable.
 

@@ -38,3 +38,8 @@
 
 (defun gpu-fail (control &rest arguments)
   (error 'gpu-error :message (apply #'format nil control arguments)))
+
+(define-condition gpu-unsupported-capability (gpu-error)
+  ((device :initarg :device :reader unsupported-capability-device)
+   (operation :initarg :operation :reader unsupported-capability-operation)
+   (element-type :initarg :element-type :reader unsupported-capability-element-type)))

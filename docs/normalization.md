@@ -1,6 +1,6 @@
 # Normalization
 
-`cl-gpu/reductions` supplies softmax and weighted RMSNorm over [strided views](strided-views.md). Both preserve the input shape and element type: f32, f16 or bf16. Arithmetic uses f32 and results round on store.
+`cl-gpu/reductions` supplies softmax and weighted RMSNorm over [strided views](strided-views.md). Both preserve the input shape and element type: f32, f16, bf16 or f64. f64 arithmetic uses f64 on [native-capable devices](native-f64.md); other types compute in f32 and round on store.
 
 | Call | Group computation |
 |---|---|
@@ -17,11 +17,11 @@ The default axis is the last dimension. Explicit NIL selects all axes; integers,
 
 ## Weights and epsilon
 
-Weights default to one. A real scalar weight converts to f32. A weight view must have the input element type and device, and broadcast to the input shape without expanding it. Signed and zero weight strides work.
+Weights default to one. A real scalar weight converts to the computation precision: f64 for f64 input, otherwise f32. A weight view must have the input element type and device, and broadcast to the input shape without expanding it. Signed and zero weight strides work.
 
 For input shape `(batch rows features)`, a vector of shape `(features)` shares feature weights, while `(batch 1 features)` supplies batch-specific feature weights.
 
-Epsilon is a nonnegative real converted to f32. All-zero input with positive epsilon produces zeros. Zero epsilon with an all-zero group follows backend division-by-zero arithmetic. Maximum subtraction stabilizes softmax for ordinary finite inputs; extreme differences, square overflow, underflow, infinities and NaNs follow backend arithmetic. There is no widened accumulation option.
+Epsilon is a nonnegative real converted to the computation precision. Its default is `1d-6` for f64 and `1f-6` otherwise. All-zero input with positive epsilon produces zeros. Zero epsilon with an all-zero group follows backend division-by-zero arithmetic. Maximum subtraction stabilizes softmax for ordinary finite inputs; extreme differences, square overflow, underflow, infinities and NaNs follow backend arithmetic. There is no widened accumulation option.
 
 ## Destinations
 

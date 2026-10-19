@@ -64,10 +64,11 @@
 (defun view-element (view)
   (scalar-type-name (gpu-array-element-type (strided-view-data view))))
 
-(defun float-view-element (view)
+(defun float-view-element (view &optional f64-p)
   (let ((type (gpu-array-element-type (strided-view-data view))))
-    (unless (member type (mapcar #'parse-type '(f32 f16 bf16)))
-      (gpu-fail "expected an f32, f16 or bf16 strided view"))
+    (unless (or (member type (mapcar #'parse-type '(f32 f16 bf16)))
+                (and f64-p (eq type (parse-type 'f64))))
+      (gpu-fail "expected a supported floating strided view"))
     (scalar-type-name type)))
 
 (defun view-root (view)

@@ -23,6 +23,12 @@
        (unwind-protect
             (progn
               (asdf:test-system "cl-gpu/opencl")
+              (asdf:test-system "cl-gpu/elementwise/opencl/tests")
+              (asdf:test-system "cl-gpu/reductions/opencl/tests")
+              (load "examples/f64.lisp")
+              (let ((result (uiop:symbol-call :cl-gpu/examples/f64 :run-example device)))
+                (format t "~&F64: ~s~%" result)
+                (assert (equalp '(:add #(16777218d0 2d0) :sum #(16777218d0)) result)))
               (load "examples/opencl.lisp")
               (let ((result (uiop:symbol-call :cl-gpu/examples/opencl :run)))
                 (format t "~&SAXPY: ~s~%" result)

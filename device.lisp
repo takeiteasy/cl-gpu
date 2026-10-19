@@ -11,6 +11,12 @@
     (declare (ignore device))
     nil))
 
+(defgeneric device-native-type-p (device element-type)
+  (:documentation "Whether DEVICE supports native scalar computation with ELEMENT-TYPE. Storage and emulation do not imply support.")
+  (:method (device element-type)
+    (declare (ignore device element-type))
+    nil))
+
 (defgeneric device-allocate (device bytes)
   (:documentation "A zeroed backend buffer of BYTES bytes."))
 
@@ -88,3 +94,8 @@ not zero. Provided by cl-gpu/blas, which backends may specialize."))
 Signal the first error a launch raised since the last synchronization."
   (device-synchronize device)
   nil)
+
+(defun require-native-f64 (device operation &rest elements)
+  (when (and (member 'f64 elements) (not (device-native-type-p device 'f64)))
+    (error 'gpu-unsupported-capability :device device :operation operation :element-type 'f64
+           :message (format nil "~a requires native f64 computation on this device" operation))))

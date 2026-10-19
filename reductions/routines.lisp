@@ -21,7 +21,7 @@
 (defun weight-strides (input weights element device)
   (when (strided-view-p weights)
     (check-view weights)
-    (unless (and (eq element (float-view-element weights))
+    (unless (and (eq element (float-view-element weights t))
                  (eq device (gpu-array-device (strided-view-data weights))))
       (gpu-fail "weights must have the input element type and device"))
     (let* ((shape (strided-view-shape input)) (ws (strided-view-shape weights))
@@ -35,10 +35,10 @@
             (setf (aref strides target) (aref (strided-view-strides weights) axis)))))
       strides)))
 
-(defun f32-scalar (value name)
+(defun float-scalar (value name element)
   (unless (realp value) (gpu-fail "~a must be real" name))
-  (handler-case (coerce value 'single-float)
-    (arithmetic-error () (gpu-fail "~a does not fit f32" name))))
+  (handler-case (coerce value (if (eq element 'f64) 'double-float 'single-float))
+    (arithmetic-error () (gpu-fail "~a does not fit ~a" name element))))
 
 (defun layout-metadata (input output axes keepdims normalization weights)
   ;; Rows are (dimension input-stride output-stride weight-stride), fastest kept/reduced axes first.
@@ -72,12 +72,12 @@
           do (funcall (kernel-name 'scatter (view-element output))
                       (view-root input) (view-root output) metadata
                       (length (strided-view-shape output)) n (view-base output) start
-                      :grid count :group 256 :device (gpu-array-device (strided-view-data output))))))
+                      :grid (* 256 (ceiling count 256)) :group 256 :device (gpu-array-device (strided-view-data output))))))
 
 (defun execute-operation (operation input out axis keepdims weights epsilon)
   (check-view input)
   (unless (and (realp epsilon) (>= epsilon 0)) (gpu-fail "epsilon must be nonnegative and real"))
-  (let* ((element (float-view-element input))
+  (let* ((element (float-view-element input t))
          (device (gpu-array-device (strided-view-data input)))
          (input-shape (strided-view-shape input))
          (rank (length input-shape)) (axes (normalize-axes axis rank))
@@ -89,11 +89,12 @@
          (groups (reduce #'* (loop for a below rank unless (member a axes) collect (aref input-shape a))
                          :initial-value 1))
          (wstrides (when (eq operation 'rmsnorm) (weight-strides input weights element device)))
-         (weight (if (or (null weights) wstrides) 1f0 (f32-scalar weights "weights")))
-         (epsilon (f32-scalar epsilon "epsilon")))
+         (weight (if (or (null weights) wstrides) 1f0 (float-scalar weights "weights" element)))
+         (epsilon (float-scalar epsilon "epsilon" element)))
     (unless (and (typep width '(integer 0 #.(- (expt 2 63) 257)))
                  (typep groups '(integer 0 #.(1- (expt 2 63)))))
       (gpu-fail "reduction dimensions exceed signed 64-bit indexing"))
+    (cl-gpu::require-native-f64 device operation element)
     (when (and (plusp (shape-size shape)) (zerop width)
                (member operation '(mean minimum maximum argmin argmax)))
       (gpu-fail "empty groups have no ~a" operation))
@@ -161,10 +162,10 @@
   "Normalize INPUT by exponentials over AXIS into OUT; return OUT."
   (execute-operation 'softmax input out axis nil nil 0f0))
 
-(defun rmsnorm (input &key (axis -1) weights (epsilon 1e-6))
+(defun rmsnorm (input &key (axis -1) weights (epsilon 1d-6))
   "Normalize INPUT by its root mean square over AXIS, then apply WEIGHTS."
   (execute-operation 'rmsnorm input nil axis nil weights epsilon))
 
-(defun rmsnorm! (out input &key (axis -1) weights (epsilon 1e-6))
+(defun rmsnorm! (out input &key (axis -1) weights (epsilon 1d-6))
   "Normalize INPUT by its root mean square over AXIS into OUT; return OUT."
   (execute-operation 'rmsnorm input out axis nil weights epsilon))

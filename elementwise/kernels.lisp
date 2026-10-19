@@ -40,8 +40,8 @@
       (:sigmoid (sigmoid-code a))
       (:silu `(* ,a ,(sigmoid-code a)))
       (:gelu `(* (* 0.5 ,a)
-                 (+ 1.0 (cl:tanh (* 0.7978845608028654f0
-                                   (+ ,a (* 0.044715f0 (* (* ,a ,a) ,a))))))))
+                 (+ 1.0 (cl:tanh (* 0.79788456080286535587989211986876d0
+                                   (+ ,a (* 0.044715d0 (* (* ,a ,a) ,a))))))))
       (:clamp `(if (> ,b ,c) (progn (%record-error status) ,a) (gpu:clamp ,a ,b ,c)))
       (otherwise `(,(ecase operation (:min 'cl:min) (:max 'cl:max) (:sqrt 'cl:sqrt)
                           (:exp 'cl:exp) (:log 'cl:log) (:sin 'cl:sin) (:cos 'cl:cos)
@@ -49,10 +49,10 @@
 
 (defun build-kernel (operation element result-element kinds operator checked)
   (let* ((rank 'rank) (metadata 'metadata)
-         (parameters `((out (gpu:ptr ,result-element :global))
+         (parameters `((out (gpu:ptr ,(if (eq operation :convert) (conversion-storage result-element) result-element) :global))
                        (,metadata (gpu:ptr gpu:i64 :global)) (,rank gpu:u32)
                        (count gpu:i64) (start gpu:i64) (obase gpu:i64)))
-         (bindings '((position (+ start (gpu:convert gpu:i64 (gpu:global-id 0))))))
+         (bindings '((position start) (lane (gpu:convert gpu:i64 (gpu:global-id 0)))))
          (offsets '((oi obase))) (values nil) (arguments nil)
          (width (1+ (length kinds))))
     (loop for kind in kinds for i from 0
@@ -63,14 +63,14 @@
           for type = (if (and (eq operation :select) (zerop i)) 'gpu:u8 element)
           do (if (eq kind :view)
                  (progn
-                   (setf parameters (append parameters `((,x (gpu:ptr ,type :global)) (,base gpu:i64))))
+                   (setf parameters (append parameters `((,x (gpu:ptr ,(if (eq operation :convert) (conversion-storage type) type) :global)) (,base gpu:i64))))
                    (push (list at base) offsets)
                    (push `(,value ,(if (and (float-element-p type) (not (member operation '(:copy :convert :select))))
-                                      `(gpu:convert gpu:f32 (aref ,x ,at)) `(aref ,x ,at))) arguments))
+                                      `(gpu:convert ,(compute-element type) (aref ,x ,at)) `(aref ,x ,at))) arguments))
                  (progn
                    (setf parameters (append parameters `((,x ,type))))
                    (push `(,value ,(if (and (float-element-p type) (not (member operation '(:copy :convert :select))))
-                                      `(gpu:convert gpu:f32 ,x) x)) arguments)))
+                                      `(gpu:convert ,(compute-element type) ,x) x)) arguments)))
              (push value values))
     (setf width (1+ (length offsets)))
     (when checked (setf parameters (append parameters '((status (gpu:ptr gpu:u32 :global))))))
@@ -86,7 +86,8 @@
            (form
              `(progn
                 (let ,bindings
-                  (when (< position count)
+                  (when (< lane (- count start))
+                    (incf position lane)
                     (let ,(reverse offsets)
                       (let ((q position))
                         (gpu:for (axis (gpu:convert gpu:u32 0) (< axis ,rank) (incf axis))

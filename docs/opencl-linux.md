@@ -1,6 +1,6 @@
 # OpenCL on Linux
 
-Run the core and OpenCL runtime suites on Ubuntu 24.04 with SBCL, the system ICD loader and PoCL's CPU device. The validation requires `cl_khr_fp64` and checks the runnable SAXPY example.
+Run the core and OpenCL runtime suites on Ubuntu 24.04 with SBCL, the system ICD loader and PoCL's CPU device. The validation requires `cl_khr_fp64`, runs native f64 elementwise/conversion/reduction/normalization conformance suites and checks the runnable SAXPY and f64 examples.
 
 | Validated target | Lisp and runtime |
 |---|---|

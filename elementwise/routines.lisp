@@ -32,8 +32,8 @@
   (unless (gpu::scalar-value-p (gpu:parse-type element) value)
     (gpu-fail "scalar ~s does not fit ~s" value element))
   (if (float-element-p element)
-      (handler-case (coerce value 'single-float)
-        (arithmetic-error () (gpu-fail "scalar does not fit f32"))) value))
+      (handler-case (coerce value (if (eq element 'gpu:f64) 'double-float 'single-float))
+        (arithmetic-error () (gpu-fail "scalar does not fit ~s" element))) value))
 
 (defun allocate-result (shape element device)
   (let ((data (gpu:make-gpu-array (shape-size shape) :element-type element :device device)))
@@ -75,6 +75,7 @@
       (when (and (eq operation :clamp) (realp (second inputs)) (realp (third inputs))
                  (> (second inputs) (third inputs)))
         (gpu-fail "clamp lower bound exceeds upper bound"))
+      (gpu::require-native-f64 device operation element result-element)
       (when out
         (unless (and (eq result-element (checked-element out))
                      (equalp shape (gpu:strided-view-shape out))
@@ -118,7 +119,7 @@
                       (args (loop for input in inputs for i from 0
                                   for type = (if (and (eq operation :select) (zerop i)) 'gpu:u8 element)
                                   append (if (gpu:strided-view-p input)
-                                             (list (view-root input) (view-base input))
+                                             (list (if (eq operation :convert) (conversion-root input) (view-root input)) (view-base input))
                                              (list (scalar-value input type))))))
                  (setf metadata (gpu:to-device (operation-metadata shape target inputs)
                                                :element-type 'gpu:i64 :device device))
@@ -126,17 +127,18 @@
                  (loop for start from 0 below (shape-size shape) by 16776960
                        for count = (cl:min 16776960 (- (shape-size shape) start))
                        do (gpu::launch kernel
-                                       (append (list (view-root target) metadata (length shape)
+                                       (append (list (if (eq operation :convert) (conversion-root target) (view-root target)) metadata (length shape)
                                                      (shape-size shape) start (view-base target)) args
                                                (when checked (list status))
                                                (when (eq operation :convert)
                                                  (list (position rounding '(:nearest-even :truncate :floor :ceiling)))))
-                                       :grid count :group 256 :device device))
+                                       :grid (* 256 (ceiling count 256)) :group 256 :device device))
                  (when (and checked (not (zerop (aref (gpu:from-device status) 0))))
                    (gpu-fail "~a: invalid ~a" operation
                              (case operation (:divide "integer divisor") (:clamp "clamp bounds")
                                    (otherwise "NaN-to-integer conversion"))))
-                 (when alias (execute-operation :copy out (list scratch)))))
+                 (when alias (execute-operation (if (eq operation :convert) :convert :copy) out (list scratch)
+                                                     :operator result-element))))
              (setf success t)
              result)
         (when metadata (gpu:free metadata))

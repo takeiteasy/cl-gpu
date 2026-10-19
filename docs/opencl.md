@@ -29,6 +29,7 @@ See the runnable [example](../examples/opencl.lisp).
 | `(available-devices)` | Device descriptions in platform enumeration order |
 | `(device-name device)` | Name of a description or opened device |
 | `(device-extensions device)` | Extension names as a list of strings |
+| `(cl-gpu:device-native-type-p device element-type)` | Native scalar computation capability; independent of storage availability |
 | `(open-device description)` | Opens one context and ordered queue |
 | `(default-device)` | Cached device, opened lazily; prefers a GPU, otherwise a CPU |
 | `(release device)` | Waits, releases kernels/context/queue; repeated release is harmless |
@@ -72,11 +73,11 @@ sbcl --noinform --non-interactive --eval '(asdf:test-system "cl-gpu")'
 sbcl --noinform --non-interactive --eval '(asdf:test-system "cl-gpu/opencl")'
 ```
 
-The core suite includes printer tests without loading OpenCL. The runtime suite requires a device and fails explicitly when none is available. Executed f64 arithmetic is conditional on `cl_khr_fp64`; the Linux PoCL validation requires that extension.
+The core suite includes printer tests without loading OpenCL. The runtime suite requires a device and fails explicitly when none is available. Executed core f64 arithmetic is conditional on `cl_khr_fp64`; the Linux PoCL validation requires that extension and runs the [f64 strided conformance suites](native-f64.md#tests).
 
 ## Limitations
 
-- Higher-level operation parity is separate work: Metal-specific helpers, expression device restrictions and non-divisible operation launchers require porting ([operation parity](https://github.com/communal-software/cl-gpu/issues/86)).
+- Strided elementwise operations, conversions, reductions and normalization support native f64. Other higher-level operation parity, including gather helpers and expression device restrictions, remains separate ([operation parity](https://github.com/communal-software/cl-gpu/issues/86)).
 - Kernel `bf16`, images, samplers, SVM and OpenCL 2.x features are unsupported.
 - One queue lock serializes encoding; host staging adds memory allocation and copying ([runtime performance](https://github.com/communal-software/cl-gpu/issues/88)).
 - Released devices remain keys in the core kernel cache ([pipeline cache](https://github.com/communal-software/cl-gpu/issues/18)); their native OpenCL kernels are released.

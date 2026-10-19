@@ -345,3 +345,10 @@
   nil)
 
 (gpu:register-backend :opencl #'default-device)
+
+(defmethod gpu:device-native-type-p ((device opencl-device) element-type)
+  (let ((type (gpu:parse-type element-type)))
+    (and (typep type 'gpu:scalar-type)
+         (let ((support (gpu:type-support type :opencl)))
+           (or (eq support t)
+               (and (stringp support) (member support (device-extensions device) :test #'equal) t))))))
