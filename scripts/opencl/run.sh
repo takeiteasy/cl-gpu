@@ -4,6 +4,7 @@ cd "$(dirname "$0")/../.."
 export CL_GPU_LOG_DIR="${CL_GPU_LOG_DIR:-${TMPDIR:-/tmp}/cl-gpu-opencl-logs}"
 mkdir -p "$CL_GPU_LOG_DIR"
 export OCL_ICD_VENDORS=/etc/OpenCL/vendors/pocl.icd
+export POCL_SIGFPE_HANDLER=0
 {
     uname -a
     cat /etc/os-release
