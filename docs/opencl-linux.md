@@ -58,7 +58,7 @@ limactl shell --workdir=/tmp cl-gpu-opencl cat /tmp/cl-gpu-opencl-logs/runtime.l
 limactl stop cl-gpu-opencl
 ```
 
-The stopped VM remains available for reuse with `limactl start cl-gpu-opencl`.
+The stopped VM remains available for reuse with `limactl start cl-gpu-opencl`.[^guest-storage]
 
 ## CI
 
@@ -83,3 +83,4 @@ The `opencl-linux-x86-64` artifact contains setup, environment and test logs, in
 
 [^versions]: The setup does not pin Ubuntu package or Quicklisp versions. Preserve the environment log when reporting results; reuse the recorded Quicklisp distribution and package versions when reproducing a specific environment.
 [^tags]: GitHub does not evaluate path filters for tag pushes; see [workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpushpull_requestpull_request_targetpathspaths-ignore).
+[^guest-storage]: The example checkout and logs use guest `/tmp`, which is cleared on reboot. Preserve logs on the host and repeat the clone step after restarting. Quicklisp remains in the guest home directory.
