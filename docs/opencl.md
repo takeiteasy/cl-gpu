@@ -65,6 +65,8 @@ The printer supports baseline integer types, `f32`, vectors, local boolean expre
 
 macOS uses the system OpenCL framework. Linux uses `libOpenCL.so.1` or `libOpenCL.so`; install an ICD loader and an OpenCL 1.2-capable device implementation such as PoCL. See [Linux setup and validation](opencl-linux.md) for Ubuntu, ARM64 Lima and CI commands.
 
+With PoCL 5 on Linux x86-64, export `POCL_SIGFPE_HANDLER=0` before starting SBCL. The Linux validation script sets it automatically.
+
 ```sh
 sbcl --noinform --non-interactive --eval '(asdf:test-system "cl-gpu")'
 sbcl --noinform --non-interactive --eval '(asdf:test-system "cl-gpu/opencl")'

@@ -9,7 +9,8 @@ export POCL_SIGFPE_HANDLER=0
     uname -a
     cat /etc/os-release
     git rev-parse HEAD
-    dpkg-query -W sbcl ocl-icd-libopencl1 pocl-opencl-icd libpocl2
+    printf 'OpenCL ICD: %s\nPoCL SIGFPE handler: %s\n' "$OCL_ICD_VENDORS" "$POCL_SIGFPE_HANDLER"
+    dpkg-query -W sbcl ocl-icd-libopencl1 pocl-opencl-icd
     sbcl --noinform --no-userinit --script scripts/opencl/validate.lisp environment
     clinfo
 } 2>&1 | tee "$CL_GPU_LOG_DIR/environment.log"
