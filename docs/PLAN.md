@@ -61,6 +61,8 @@ The [OpenCL runtime](opencl.md) implements the same device protocol as Metal. [L
 | Checked axis gather over strided device views | [Available](gather.md) |
 | Shared c32/c64 storage and complex strided operations | [Available](complex.md) |
 
+For operation and convenience API alignment, see [trivial-simd feature parity](trivial-simd-parity.md).
+
 ## Limitations
 
 Kernels print as Metal or OpenCL source and run through [`define-kernel`](kernels.md). There is no CUDA printer. OpenCL operation and platform limits are listed in [OpenCL limitations](opencl.md#limitations).
