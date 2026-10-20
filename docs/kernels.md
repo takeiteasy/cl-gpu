@@ -61,10 +61,10 @@ Metal compiles libraries with fast math on by default; other kernels keep it.
 
 | Function | Result |
 |---|---|
-| `(make-gpu-array length &key element-type device initial-contents)` | a zeroed array; `element-type` is a scalar or `(vec T n)` type, default `f32` |
-| `(to-device sequence &key element-type device)` | a new array holding the contents of `sequence` |
-| `(copy-into array sequence)` | stores `sequence` in the first elements of an existing array or [view](#views), and returns it |
-| `(from-device array &key into flat)` | a new vector of the contents, specialised to the element type, or fills the first elements of `into`[^6] |
+| `(make-gpu-array length &key element-type device initial-contents)` | a zeroed array; `element-type` is a scalar, `(vec T n)` or [complex](complex.md) type, default `f32` |
+| `(to-device sequence &key element-type device raw flat)` | a new array holding the contents of `sequence` |
+| `(copy-into array sequence &key raw flat)` | stores `sequence` in the first elements of an existing array or [view](#views), and returns it |
+| `(from-device array &key into flat raw)` | a new vector of the contents, specialised to the element type, or fills the first elements of `into`[^6] |
 | `(free array)` | releases the device memory; freeing twice is harmless |
 | `(with-gpu-array (var form) body)` | binds the array and frees it on exit |
 | `(make-gpu-array-view array length &key offset)` | a [view](#views) of `length` elements from element `offset` (default 0) |
@@ -131,7 +131,7 @@ A launch that fails on the GPU reports at the next wait on its device, not at th
 | `(current-device)` | the device used when `:device` is omitted |
 | `(synchronize &optional device)` | blocks until the device's launches finish |
 
-`cl-gpu/metal` is the only backend. `current-device` signals `gpu-error` when none is loaded.
+`cl-gpu/metal` and `cl-gpu/opencl` provide device backends. `current-device` signals `gpu-error` when none is loaded.
 
 ## Errors
 

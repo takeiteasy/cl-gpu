@@ -225,3 +225,30 @@
           (signals gpu:gpu-unsupported-capability (ew:add input 1d0))
           (signals gpu:gpu-unsupported-capability (ew:convert input 'gpu:f32))
           (signals gpu:gpu-unsupported-capability (ew:add! input input 1d0)))))))
+
+(test complex-c32-device
+  (complex-device-checks 'gpu:c32))
+
+(test complex-transfers-and-c64-rejection
+  (complex-transfer-checks 'gpu:c32)
+  (complex-transfer-checks 'gpu:c64)
+  (is (gpu:device-native-type-p (gpu:current-device) 'gpu:c32))
+  (is (not (gpu:device-native-type-p (gpu:current-device) 'gpu:c64)))
+  (gpu:with-gpu-array (data (gpu:make-gpu-array 0 :element-type 'gpu:c64))
+    (signals gpu:gpu-unsupported-capability (ew:negate (gpu:make-strided-view data '(0))))))
+
+(test complex-exceptional-values
+  (complex-exception-checks 'gpu:c32))
+
+(gpu:define-kernel copy-complex-storage ((out (gpu:ptr (gpu:vec gpu:f32 2) :global))
+                                       (in (gpu:ptr (gpu:vec gpu:f32 2) :global)))
+  (setf (aref out 0) (aref in 0)))
+
+(test complex-storage-views-bind-vector-kernels
+  (gpu:with-gpu-array (data (gpu:to-device #(#c(1f0 2f0) #c(3f0 4f0))))
+    (let* ((window (gpu:make-gpu-array-view data 1 :offset 1))
+           (storage (gpu:gpu-array-storage-view window)))
+      (copy-complex-storage (gpu:gpu-array-storage-view data) storage :grid 1 :group 1)
+      (is (equalp #(#c(3f0 4f0) #c(3f0 4f0)) (gpu:from-device data)))
+      (gpu:free data)
+      (signals gpu:gpu-error (gpu:from-device storage)))))

@@ -5,7 +5,7 @@
    (buffer :initarg :buffer :accessor array-buffer)
    (element-type :initarg :element-type :reader gpu-array-element-type)
    (length :initarg :length :reader gpu-array-length))
-  (:documentation "A device buffer of LENGTH elements of one scalar or vector ELEMENT-TYPE."))
+  (:documentation "A device buffer of LENGTH elements of one scalar, vector or complex ELEMENT-TYPE."))
 
 (defclass gpu-array-view (gpu-array)
   ((owner :initarg :owner :reader gpu-array-view-owner)
@@ -35,8 +35,8 @@ elements in. It keeps OWNER alive and is freed with it."))
 
 (defun parse-element-type (spec)
   (let ((type (parse-type spec)))
-    (unless (or (scalar-type-p type) (vector-type-p type))
-      (gpu-fail "array elements are scalars or vectors, got ~a" (type-description type)))
+    (unless (or (scalar-type-p type) (vector-type-p type) (complex-type-p type))
+      (gpu-fail "array elements are scalars, vectors or complex values, got ~a" (type-description type)))
     type))
 
 (defun element-bytes (type)
@@ -44,7 +44,7 @@ elements in. It keeps OWNER alive and is freed with it."))
   (or (type-bytes type) (/ (scalar-type-bits type) 8)))
 
 (defun component-count (type)
-  (if (vector-type-p type) (vector-type-length type) 1))
+  (cond ((complex-type-p type) 2) ((vector-type-p type) (vector-type-length type)) (t 1)))
 
 (defun live-buffer (array)
   (or (array-buffer array)
@@ -90,6 +90,16 @@ view of a view shares too, and keeps it alive. Freeing a view does nothing."
                                    :element-type (gpu-array-element-type array)
                                    :length length :owner root :offset (+ base offset))))
 
+(defun gpu-array-storage-view (array)
+  "Borrow ARRAY with its scalar/vector storage type, retaining its owner and window offset."
+  (live-buffer array)
+  (let ((storage (storage-type (gpu-array-element-type array))))
+    (if (eq storage (gpu-array-element-type array)) array
+        (multiple-value-bind (root offset) (array-root-and-offset array)
+          (make-instance 'gpu-array-view :owner root :offset offset
+                         :device (gpu-array-device array) :length (gpu-array-length array)
+                         :element-type storage)))))
+
 (defun flat-components (type sequence)
   "The components in SEQUENCE: numbers, or for a vector TYPE a sequence per element, which is
 flattened into a vector specialised to the component type."
@@ -115,24 +125,49 @@ flattened into a vector specialised to the component type."
       sequence))
 
 (defun transfer-type (type raw)
-  (if (not raw) type
-      (progn
-        (unless (and (scalar-type-p type)
-                     (member (scalar-type-kind type) '(:float :signed :unsigned)))
-          (gpu-fail "raw transfers require numeric scalar elements"))
-        (if (member (scalar-type-name type) '(f16 bf16)) (parse-type 'u16) type))))
+  (cond ((not raw) (storage-type type))
+        ((complex-type-p type)
+         (parse-type `(vec ,(if (eq (type-spec type) 'c32) 'u32 'u64) 2)))
+        (t
+         (unless (and (scalar-type-p type)
+                      (member (scalar-type-kind type) '(:float :signed :unsigned)))
+           (gpu-fail "raw transfers require numeric scalar or complex elements"))
+         (if (member (scalar-type-name type) '(f16 bf16)) (parse-type 'u16) type))))
 
 (defun check-raw-vector (sequence type)
   (unless (typep sequence `(simple-array ,(lisp-element-type type) (*)))
     (gpu-fail "raw transfer requires a simple vector of ~s" (lisp-element-type type)))
   sequence)
 
-(defun copy-into (array sequence &key raw)
+(defun complex-components (type sequence flat raw)
+  (cond (raw (check-raw-vector sequence (transfer-type type t)))
+        (flat sequence)
+        (t (let* ((component (lisp-element-type type))
+                  (result (make-array (* 2 (length sequence)) :element-type component)))
+             (loop for value across (coerce sequence 'vector) for i from 0
+                   do (unless (numberp value) (gpu-fail "complex transfer requires numbers"))
+                      (setf (aref result (* 2 i)) (coerce (realpart value) component)
+                            (aref result (1+ (* 2 i))) (coerce (imagpart value) component)))
+             result))))
+
+(defun inferred-upload-type (sequence)
+  (let ((declared (and (vectorp sequence) (array-element-type sequence))))
+    (if (or (some #'complexp sequence)
+            (and declared (subtypep declared '(complex float))))
+        (if (or (and declared (subtypep declared '(complex double-float)))
+                (some (lambda (x) (and (complexp x)
+                                       (or (typep (realpart x) 'double-float)
+                                           (typep (imagpart x) 'double-float)))) sequence))
+            'c64 'c32)
+        'f32)))
+
+(defun copy-into (array sequence &key raw flat)
   "Store SEQUENCE in the first elements of ARRAY, in the form TO-DEVICE takes. Return ARRAY.
-With RAW, transfer a specialized vector of scalar bit representations."
+FLAT supplies interleaved complex components; RAW supplies specialized component bits."
   (let* ((type (gpu-array-element-type array))
          (transfer (transfer-type type raw))
-         (components (if raw (check-raw-vector sequence transfer) (flat-components type sequence)))
+         (components (if (complex-type-p type) (complex-components type sequence flat raw)
+                         (if raw (check-raw-vector sequence transfer) (flat-components type sequence))))
          (count (component-count type)))
     (unless (zerop (mod (length components) count))
       (gpu-fail "~d components are not whole elements of ~a"
@@ -144,15 +179,19 @@ With RAW, transfer a specialized vector of scalar bit representations."
                   (array-byte-offset array))
     array))
 
-(defun to-device (sequence &key (element-type 'f32) device raw)
-  "Upload SEQUENCE into a new array. RAW transfers scalar bit representations."
-  (let* ((type (parse-element-type element-type))
+(defun to-device (sequence &key (element-type nil supplied-p) device raw flat)
+  "Upload values, flat components, or raw bits into independent device storage."
+  (when (and (or raw flat) (not supplied-p))
+    (gpu-fail "flat/raw uploads require an explicit element type"))
+  (let* ((type (parse-element-type (if supplied-p element-type (inferred-upload-type sequence))))
          (transfer (transfer-type type raw))
-         (components (if raw (check-raw-vector sequence transfer) (flat-components type sequence)))
-         (array (make-gpu-array (ceiling (length components) (component-count type))
-                                :element-type type :device device)))
-    (handler-case (copy-into array components :raw raw)
-      (error (condition) (free array) (error condition)))))
+         (components (if (complex-type-p type) (complex-components type sequence flat raw)
+                         (if raw (check-raw-vector sequence transfer) (flat-components type sequence))))
+         (count (component-count type)))
+    (unless (zerop (mod (length components) count)) (gpu-fail "incomplete element components"))
+    (let ((array (make-gpu-array (/ (length components) count) :element-type type :device device)))
+      (handler-case (copy-into array components :raw raw :flat t)
+        (error (condition) (free array) (error condition))))))
 
 (defun from-device (array &key into flat raw)
   "The contents of ARRAY in a new vector specialised to the element type, or in the first elements of
@@ -166,7 +205,7 @@ components, or with FLAT the components are in one sequence."
     (flet ((load-into (components)
              (device-load (gpu-array-device array) (live-buffer array) components transfer
                          (array-byte-offset array))))
-      (if (and (vector-type-p type) (not flat))
+      (if (and (or (vector-type-p type) (complex-type-p type)) (not flat) (not raw))
           (let* ((elements (or into (make-array limit)))
                  (components (make-array (* count (length elements))
                                          :element-type (lisp-element-type type))))
@@ -175,7 +214,10 @@ components, or with FLAT the components are in one sequence."
             (load-into components)
             (dotimes (index (length elements) elements)
               (setf (elt elements index)
-                    (subseq components (* index count) (* (1+ index) count)))))
+                    (if (complex-type-p type)
+                        (complex (aref components (* index count))
+                                 (aref components (1+ (* index count))))
+                        (subseq components (* index count) (* (1+ index) count))))))
           (let ((components (or into (make-array (* count limit)
                                                   :element-type (lisp-element-type transfer)))))
             (unless (and (zerop (mod (length components) count))

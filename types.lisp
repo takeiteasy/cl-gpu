@@ -8,6 +8,9 @@
 (defstruct (vector-type (:include gpu-type) (:constructor make-vector-type (element length)))
   element length)
 
+(defstruct (complex-type (:include gpu-type) (:constructor make-complex-type (component)))
+  component)
+
 (defstruct (pointer-type (:include gpu-type) (:constructor make-pointer-type (pointee space)))
   pointee space)
 
@@ -42,6 +45,7 @@
 (defun type-spec (type)
   "The specifier that PARSE-TYPE reads back as TYPE."
   (etypecase type
+    (complex-type (if (eq (complex-type-component type) (scalar 'f32)) 'c32 'c64))
     (scalar-type (scalar-type-name type))
     (vector-type `(vec ,(type-spec (vector-type-element type)) ,(vector-type-length type)))
     (pointer-type `(ptr ,(type-spec (pointer-type-pointee type)) ,(pointer-type-space type)))
@@ -65,11 +69,14 @@
          :location *current-source*))
 
 (defun parse-type (spec)
-  "The type that SPEC names: a scalar name, (vec T N), (ptr T SPACE) or (atomic T)."
+  "The scalar, array-only complex, vector, pointer or atomic type named by SPEC."
   (cond
     ((gpu-type-p spec) spec)
     ((symbolp spec)
-     (or (gethash (list :scalar spec) *types*)
+     (or (when (member spec '(c32 c64))
+           (intern-type (list :complex spec)
+                        (lambda () (make-complex-type (scalar (if (eq spec 'c32) 'f32 'f64))))))
+         (gethash (list :scalar spec) *types*)
          (type-failure spec "unknown type ~s" spec)))
     ((and (consp spec) (null (cdr (last spec))))
      (case (first spec)
@@ -97,6 +104,8 @@
     (type-failure spec "a pointer type is (ptr pointee address-space)"))
   (let ((pointee (parse-type (second spec)))
         (space (third spec)))
+    (when (complex-type-p pointee)
+      (type-failure spec "complex types are array-only; use their storage type in kernels"))
     (when (pointer-type-p pointee)
       (type-failure spec "pointers to pointers are not supported"))
     (unless (member space *address-spaces*)
@@ -136,16 +145,18 @@
         `(unsigned-byte ,bits))))
 
 (defun lisp-element-type (type)
-  "The CL type of the numbers an array of scalar or vector TYPE holds; T for bool."
-  (let ((scalar (if (vector-type-p type) (vector-type-element type) type)))
+  "The CL component type of an array element TYPE; T for bool."
+  (let ((scalar (cond ((complex-type-p type) (complex-type-component type))
+                      ((vector-type-p type) (vector-type-element type)) (t type))))
     (case (scalar-type-kind scalar)
       (:float (if (eql (scalar-type-bits scalar) 64) 'double-float 'single-float))
       (:bool t)
       (t (integer-range scalar)))))
 
 (defun type-bytes (type)
-  "Size of a numeric scalar or vector in bytes, or NIL. A 3-vector takes the space of a 4-vector."
+  "Bytes per numeric element, or NIL. A 3-vector takes the space of a 4-vector."
   (typecase type
+    (complex-type (* 2 (type-bytes (complex-type-component type))))
     (scalar-type (unless (eq (scalar-type-kind type) :bool)
                    (/ (scalar-type-bits type) 8)))
     (vector-type (* (type-bytes (vector-type-element type))
@@ -169,3 +180,10 @@
   "Whether the scalar TYPE exists on TARGET (:metal, :cuda or :opencl): T, NIL or an extension name."
   (let ((entry (member target (rest (assoc (scalar-type-name type) *scalar-support*)))))
     (if entry (second entry) t)))
+
+(defun storage-type (type)
+  "The scalar/vector storage type of an array element type."
+  (let ((type (parse-type type)))
+    (if (complex-type-p type)
+        (parse-type `(vec ,(type-spec (complex-type-component type)) 2))
+        type)))

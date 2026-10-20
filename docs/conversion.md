@@ -11,7 +11,9 @@ Both return the result view. Broadcasting applies to [elementwise arithmetic](el
 
 ## Types and ranges
 
-Supported types are f64, f32, f16, bf16 and signed/unsigned 8-, 16-, 32- and 64-bit integers. Conversions involving f16/bf16 require both types to be real floating formats. Other integer/float pairs are supported.
+[Complex conversion](complex.md#conversion) additionally supports c32/c64 with componentwise rounding and checked imaginary components.
+
+Supported real types are f64, f32, f16, bf16 and signed/unsigned 8-, 16-, 32- and 64-bit integers. Conversions involving f16/bf16 require both types to be real floating formats. Other integer/float pairs are supported.
 
 | Direction | Behavior |
 |---|---|
@@ -38,7 +40,7 @@ Floating widening preserves subnormals, infinities and signed zeros. Cross-forma
 
 ## Limitations
 
-- The supported format pairs exclude complex values and direct f16/bf16-to-integer or integer-to-f16/bf16 calls.
+- The supported real format pairs exclude direct f16/bf16-to-integer or integer-to-f16/bf16 calls.
 - Metal has no native f64 computation. OpenCL f16/bf16 conversions use encoded storage and require no half arithmetic extension.
 
 [^bits]: Conversion computes rounding and format fields with integer operations, independently of the host floating-point environment. It uses no host element staging and no full-size intermediate format buffer. Overlapping destinations may still need device scratch.

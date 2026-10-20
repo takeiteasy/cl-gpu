@@ -288,3 +288,29 @@
             (with-result (out (ew:convert (gpu:make-strided-view data (list (length patterns))) element :rounding mode))
               (is (equalp (map 'vector (lambda (raw) (reference-f64-integer raw low high mode)) patterns)
                           (ref::values-of out))))))))))
+
+(in-suite :cl-gpu/elementwise/opencl)
+(test complex-device-precision
+  (ref::complex-device-checks 'gpu:c32)
+  (ref::complex-device-checks 'gpu:c64))
+
+(test complex-c64-precision-and-component-rounding
+  (gpu:with-gpu-array (data (gpu:to-device #(#c(16777217d0 16777219d0)) :element-type 'gpu:c64))
+    (let ((view (gpu:make-strided-view data '(1))))
+      (with-result (out (ew:add view #c(1d0 2d0)))
+        (is (equalp #(#c(16777218d0 16777221d0)) (gpu:from-device (gpu:strided-view-data out)))))
+      (dolist (mode '(:nearest-even :truncate :floor :ceiling))
+        (with-result (out (ew:convert view 'gpu:c32 :rounding mode))
+          (let ((raw (gpu:from-device (gpu:strided-view-data out) :raw t))
+                (source (gpu:from-device data :raw t)))
+            (dotimes (i 2)
+              (is (= (ref::reference-float-conversion (aref source i) 'gpu:f64 'gpu:f32 mode)
+                     (aref raw i)))))))))
+  (gpu:with-gpu-array (data (gpu:to-device #(#c(1d0 1d-300)) :element-type 'gpu:c64))
+    (signals gpu:gpu-error (ew:convert (gpu:make-strided-view data '(1)) 'gpu:f32)))
+  (is (gpu:device-native-type-p gpu:*device* 'gpu:c32))
+  (is (gpu:device-native-type-p gpu:*device* 'gpu:c64)))
+
+(test complex-exceptional-values
+  (ref::complex-exception-checks 'gpu:c32)
+  (ref::complex-exception-checks 'gpu:c64))

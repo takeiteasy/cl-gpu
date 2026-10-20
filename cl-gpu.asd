@@ -160,13 +160,13 @@
   :serial t
   :components ((:module "elementwise" :serial t
                 :components ((:file "package") (:file "conversion")
-                             (:file "kernels") (:file "routines"))))
+                             (:file "complex") (:file "kernels") (:file "routines"))))
   :in-order-to ((asdf:test-op (asdf:test-op "cl-gpu/elementwise/tests"))))
 
 (asdf:defsystem "cl-gpu/elementwise/tests"
   :depends-on ("cl-gpu/elementwise" "fiveam")
   :serial t
-  :components ((:file "tests/elementwise") (:file "tests/elementwise-reference"))
+  :components ((:file "tests/elementwise") (:file "tests/elementwise-reference") (:file "tests/complex"))
   :perform (asdf:test-op (op component)
              (declare (ignore op component))
              (unless (uiop:symbol-call :cl-gpu/elementwise/tests :run-tests)

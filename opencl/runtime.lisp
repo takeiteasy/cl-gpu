@@ -348,6 +348,8 @@
 
 (defmethod gpu:device-native-type-p ((device opencl-device) element-type)
   (let ((type (gpu:parse-type element-type)))
+    (when (typep type 'gpu:complex-type)
+      (setf type (gpu:complex-type-component type)))
     (and (typep type 'gpu:scalar-type)
          (let ((support (gpu:type-support type :opencl)))
            (or (eq support t)

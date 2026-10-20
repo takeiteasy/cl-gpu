@@ -62,7 +62,7 @@
     (check-view (%make-strided-view data (copy-seq shape) (copy-seq strides) offset))))
 
 (defun view-element (view)
-  (scalar-type-name (gpu-array-element-type (strided-view-data view))))
+  (type-spec (gpu-array-element-type (strided-view-data view))))
 
 (defun float-view-element (view &optional f64-p)
   (let ((type (gpu-array-element-type (strided-view-data view))))

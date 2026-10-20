@@ -21,7 +21,7 @@ An explicitly selected OpenCL CPU device, such as PoCL, is a valid execution dev
 (cl-gpu:device-native-type-p device 'cl-gpu:f64)
 ```
 
-The query accepts scalar type symbols or parsed scalar types and returns a boolean. It reports native computation support, independently of allocation and transfers. Unknown backends return false unless they implement the protocol. Software emulation does not qualify as native support.
+The query accepts scalar and [complex](complex.md) type symbols or parsed types and returns a boolean. Complex types query their component precision. It reports native computation support, independently of allocation and transfers. Unknown backends return false unless they implement the protocol. Software emulation does not qualify as native support.
 
 A missing native f64 capability signals `cl-gpu:gpu-unsupported-capability`, a subtype of `gpu-error`, before allocating results or scratch, compiling kernels, uploading metadata or launching work. Empty calls also check capability. Readers `unsupported-capability-device`, `unsupported-capability-operation` and `unsupported-capability-element-type` identify the missing capability.
 

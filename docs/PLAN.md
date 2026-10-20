@@ -59,6 +59,7 @@ The [OpenCL runtime](opencl.md) implements the same device protocol as Metal. [L
 | Native f64 strided arithmetic, conversion, reductions and normalization | [Available](native-f64.md) |
 | Reusable fused expressions over strided device views | [Available](expressions.md) |
 | Checked axis gather over strided device views | [Available](gather.md) |
+| Shared c32/c64 storage and complex strided operations | [Available](complex.md) |
 
 ## Limitations
 

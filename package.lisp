@@ -6,7 +6,7 @@
    #:define-kernel #:find-kernel #:kernel-ir #:gpu-kernel #:gpu-kernel-p
    #:gpu-array #:make-gpu-array #:gpu-array-view #:make-gpu-array-view #:gpu-array-view-p
    #:gpu-array-view-owner #:gpu-array-view-offset #:to-device #:copy-into #:from-device #:free #:with-gpu-array
-   #:gpu-array-length #:gpu-array-element-type #:gpu-array-device
+   #:gpu-array-length #:gpu-array-element-type #:gpu-array-device #:gpu-array-storage-view
    #:strided-view #:strided-view-p #:make-strided-view
    #:strided-view-data #:strided-view-shape #:strided-view-strides #:strided-view-offset
    #:synchronize
@@ -29,7 +29,8 @@
    #:for
    #:while
    ;; Types
-   #:f16 #:bf16 #:f32 #:f64
+   #:f16 #:bf16 #:f32 #:f64 #:c32 #:c64
+   #:complex-type #:complex-type-component #:storage-type
    #:i8 #:i16 #:i32 #:i64
    #:u8 #:u16 #:u32 #:u64
    #:bool #:vec #:ptr #:atomic #:ptr+ #:ptr-

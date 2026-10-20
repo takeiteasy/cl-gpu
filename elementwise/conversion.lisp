@@ -135,8 +135,16 @@ inline ulong cl_gpu_ew_convert(ulong raw, ulong source, ulong destination, ulong
 (defun compute-element (element)
   (if (eq element 'gpu:f64) 'gpu:f64 'gpu:f32))
 
+(defun complex-element-p (element)
+  (member element '(gpu:c32 gpu:c64)))
+
+(defun component-element (element)
+  (case element (gpu:c32 'gpu:f32) (gpu:c64 'gpu:f64) (otherwise element)))
+
 (defun conversion-storage (element)
-  (if (member element '(gpu:f16 gpu:bf16)) 'gpu:u16 element))
+  (cond ((member element '(gpu:f16 gpu:bf16)) 'gpu:u16)
+        ((complex-element-p element) `(gpu:vec ,(component-element element) 2))
+        (t element)))
 
 (defun conversion-root (view)
   (let ((root (view-root view)))
@@ -144,4 +152,12 @@ inline ulong cl_gpu_ew_convert(ulong raw, ulong source, ulong destination, ulong
         (make-instance 'gpu:gpu-array-view :owner root :offset 0
                        :device (gpu:gpu-array-device root) :length (gpu:gpu-array-length root)
                        :element-type (gpu:parse-type 'gpu:u16))
-        root)))
+        (gpu:gpu-array-storage-view root))))
+
+(defun operation-storage (element operation)
+  (if (or (eq operation :convert) (complex-element-p element))
+      (conversion-storage element) element))
+
+(defun operation-root (view operation)
+  (if (or (eq operation :convert) (complex-element-p (view-element view)))
+      (conversion-root view) (view-root view)))

@@ -7,6 +7,8 @@ Kernels use a closed set of types. Kernel parameters are annotated; everything e
   :arguments '((out (ptr f32 :global)) (n u32)))
 ```
 
+[Complex array types](complex.md) c32/c64 use paired vector storage; they are excluded from kernel type annotations.
+
 ## Type set
 
 | Type | Spelling | Notes |

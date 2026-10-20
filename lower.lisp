@@ -972,8 +972,8 @@ BROADCAST, a vector among the nodes decides the type and a scalar of its element
                     (let* ((*current-source* (or (and cst (cst:source (cst:second cst)))
                                                  *current-source*))
                            (type (parse-type spec)))
-                      (when (atomic-type-p type)
-                        (type-failure spec "a parameter cannot have an atomic type"))
+                      (when (or (atomic-type-p type) (complex-type-p type))
+                        (type-failure spec "a parameter requires a DSL scalar, vector or pointer type"))
                       (cons name type))))))
 
 (defun wrap-in-nil-block (form)

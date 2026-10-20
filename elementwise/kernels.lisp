@@ -8,6 +8,8 @@
        (let ((z (cl:exp ,x))) (/ z (+ 1.0 z)))))
 
 (defun operation-code (operation element values operator)
+  (when (or (complex-element-p element) (complex-element-p operator))
+    (return-from operation-code (complex-operation-code operation element values operator)))
   (destructuring-bind (a &optional b c) values
     (case operation
       (:copy a)
@@ -49,7 +51,7 @@
 
 (defun build-kernel (operation element result-element kinds operator checked)
   (let* ((rank 'rank) (metadata 'metadata)
-         (parameters `((out (gpu:ptr ,(if (eq operation :convert) (conversion-storage result-element) result-element) :global))
+         (parameters `((out (gpu:ptr ,(operation-storage result-element operation) :global))
                        (,metadata (gpu:ptr gpu:i64 :global)) (,rank gpu:u32)
                        (count gpu:i64) (start gpu:i64) (obase gpu:i64)))
          (bindings '((position start) (lane (gpu:convert gpu:i64 (gpu:global-id 0)))))
@@ -63,12 +65,12 @@
           for type = (if (and (eq operation :select) (zerop i)) 'gpu:u8 element)
           do (if (eq kind :view)
                  (progn
-                   (setf parameters (append parameters `((,x (gpu:ptr ,(if (eq operation :convert) (conversion-storage type) type) :global)) (,base gpu:i64))))
+                   (setf parameters (append parameters `((,x (gpu:ptr ,(operation-storage type operation) :global)) (,base gpu:i64))))
                    (push (list at base) offsets)
                    (push `(,value ,(if (and (float-element-p type) (not (member operation '(:copy :convert :select))))
                                       `(gpu:convert ,(compute-element type) (aref ,x ,at)) `(aref ,x ,at))) arguments))
                  (progn
-                   (setf parameters (append parameters `((,x ,type))))
+                   (setf parameters (append parameters `((,x ,(if (complex-element-p type) (conversion-storage type) type)))))
                    (push `(,value ,(if (and (float-element-p type) (not (member operation '(:copy :convert :select))))
                                       `(gpu:convert ,(compute-element type) ,x) x)) arguments)))
              (push value values))
@@ -100,7 +102,7 @@
                             (setf q (/ q dimension)))))
                       (let* ,(nreverse arguments)
                         ,@(when (and checked (eq operation :convert))
-                            `((when (/= ,(first values) ,(first values)) (%record-error status))))
+                            `((when ,(conversion-error-code element result-element (first values)) (%record-error status))))
                         (setf (aref out oi) ,expression))))))))
       (gpu::make-gpu-kernel 'elementwise parameters form :precise-math t))))
 

@@ -43,6 +43,8 @@
 
 (defmethod gpu:device-native-type-p ((device metal-device) element-type)
   (let ((type (gpu:parse-type element-type)))
+    (when (typep type 'gpu:complex-type)
+      (setf type (gpu:complex-type-component type)))
     (and (typep type 'gpu:scalar-type)
          (member (gpu:scalar-type-name type)
                  '(gpu:f16 gpu:bf16 gpu:f32 gpu:i8 gpu:u8 gpu:i16 gpu:u16 gpu:i32 gpu:u32 gpu:i64 gpu:u64))

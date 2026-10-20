@@ -1,5 +1,7 @@
 # Arrays
 
+For device buffers, see [kernels and arrays](kernels.md#arrays) and [complex arrays](complex.md).
+
 A kernel declares fixed-size arrays with `shared-array` and `local-array`. Each form returns a pointer to the first element, so `aref`, `ptr+` and the atomics work on it.
 
 ```lisp

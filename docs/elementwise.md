@@ -31,7 +31,7 @@ Names below belong to `cl-gpu/elementwise`. Every allocating operation has a des
 | `(select mask on-true on-false)` | A u8 view mask; any nonzero byte selects `on-true` |
 | `convert`, `convert!` | See [type conversion](conversion.md) |
 
-Operands are views or Lisp real scalars. At least one numeric view establishes the element type and device; the mask does not establish the numeric type. Numeric views share one element type. Scalars must fit that type; floating scalars convert to its precision. Mixed view types require explicit conversion.
+Real operands are views or Lisp real scalars. [Complex arrays](complex.md) accept real or complex scalars and a smaller operation subset. At least one numeric view establishes the element type and device; the mask does not establish the numeric type. Numeric views share one element type. Scalars must fit that type; floating scalars convert to its precision. Mixed view types require explicit conversion.
 
 Supported elements are `f16`, `bf16`, `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64` and `u64`. Floating operations on f16/bf16 widen to f32, compute there and round once on storage. f64 operands, scalars and intermediates stay in double precision on [native-capable devices](native-f64.md).[^math]
 
@@ -66,6 +66,6 @@ Host tests cover layouts, validation, generated kernels, launch boundaries and c
 - Each nonempty call uploads layout metadata. Metal uploads wait for earlier device work ([#49](https://github.com/communal-software/cl-gpu/issues/49)).
 - Generic indexing uses O(rank) coordinate decoding per element; contiguous specialization and axis coalescing are tracked in [#76](https://github.com/communal-software/cl-gpu/issues/76).
 - Irregular destination uniqueness may require O(output elements) host workspace ([#75](https://github.com/communal-software/cl-gpu/issues/75)).
-- Complex, bool and vector elements are outside this API. Native Metal f64 computation is unsupported; see the [support matrix](native-f64.md#support).
+- Bool and ordinary vector elements are outside this API. Complex operations use the [documented subset](complex.md#operations). Native Metal f64 computation is unsupported; see the [support matrix](native-f64.md#support).
 
 [^math]: Kernels use precise math. Floating arithmetic and transcendental exceptional values follow the selected backend. OpenCL f64 kernels use precise math; comparisons involving NaN are false except `:ne`. Selection preserves the chosen value bits. Arithmetic does not promise NaN payload preservation. Sigmoid uses a sign-dependent formula to avoid exponential overflow; SiLU multiplies by sigmoid. GELU uses `0.5*x*(1+tanh(sqrt(2/pi)*(x+0.044715*x³)))`; its cubic intermediate may overflow. Floating results need not match CPU arithmetic bit for bit. Conversion has the explicit rules on its own page.
